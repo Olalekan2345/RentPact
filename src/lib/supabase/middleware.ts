@@ -21,6 +21,12 @@ export async function updateSession(request: NextRequest) {
   }
 
   const supabase = createServerClient<Database>(url, key, {
+    global: {
+      // Fail fast instead of hanging: Supabase's auth endpoint occasionally
+      // stalls, and an unbounded fetch here turns into a Vercel
+      // MIDDLEWARE_INVOCATION_TIMEOUT 504 for the whole page.
+      fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(5000) }),
+    },
     cookies: {
       getAll() {
         return request.cookies.getAll();
@@ -33,9 +39,15 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  return { response, user };
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    return { response, user };
+  } catch {
+    // Treat an unreachable auth server as "not signed in" — the caller
+    // redirects to /auth, and /auth bounces genuinely signed-in users back
+    // to the dashboard once the client-side session loads.
+    return { response, user: null };
+  }
 }
