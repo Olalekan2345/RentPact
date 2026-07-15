@@ -3,6 +3,7 @@ import type { ReleaseFrequency } from "@/components/escrow";
 import { MOCK_MODE, sendGaslessTransaction } from "@/lib/circle";
 import * as mockStore from "@/lib/leaseStore";
 import { getLeaseMetadata, saveLeaseMetadata } from "@/lib/leaseMetadataStore";
+import { cachedChainRead } from "@/lib/chainCache";
 import {
   readLease,
   readPendingPeriods as readOnChainPendingPeriods,
@@ -501,7 +502,7 @@ export async function releaseCaution(id: string, callerAddress: Address): Promis
 export async function getLease(id: string): Promise<Lease | null> {
   if (!MOCK_MODE) {
     try {
-      return await onChainLeaseToLease(BigInt(id));
+      return await cachedChainRead(`lease:${id}`, () => onChainLeaseToLease(BigInt(id)));
     } catch {
       return null;
     }
@@ -511,18 +512,22 @@ export async function getLease(id: string): Promise<Lease | null> {
 
 export async function listLeasesForTenant(params: { email: string; address: Address }): Promise<Lease[]> {
   if (!MOCK_MODE) {
-    const ids = await findLeaseIdsForAddress(params.address, "tenant");
-    const leases = await Promise.all(ids.map(onChainLeaseToLease));
-    return leases.sort((a, b) => b.createdAt - a.createdAt);
+    return cachedChainRead(`leases:tenant:${params.address}`, async () => {
+      const ids = await findLeaseIdsForAddress(params.address, "tenant");
+      const leases = await Promise.all(ids.map(onChainLeaseToLease));
+      return leases.sort((a, b) => b.createdAt - a.createdAt);
+    });
   }
   return mockStore.listLeasesForTenant(params.email);
 }
 
 export async function listLeasesForLandlord(params: { email: string; address: Address }): Promise<Lease[]> {
   if (!MOCK_MODE) {
-    const ids = await findLeaseIdsForAddress(params.address, "landlord");
-    const leases = await Promise.all(ids.map(onChainLeaseToLease));
-    return leases.sort((a, b) => b.createdAt - a.createdAt);
+    return cachedChainRead(`leases:landlord:${params.address}`, async () => {
+      const ids = await findLeaseIdsForAddress(params.address, "landlord");
+      const leases = await Promise.all(ids.map(onChainLeaseToLease));
+      return leases.sort((a, b) => b.createdAt - a.createdAt);
+    });
   }
   return mockStore.listLeasesForLandlord(params.email);
 }
@@ -562,7 +567,7 @@ export async function getCautionReturnRate(params: { email: string; address: Add
  */
 export async function getReputationStats(params: { email: string; address: Address }): Promise<ReputationStats> {
   if (!MOCK_MODE) {
-    return getOnChainReputationStats(params.address);
+    return cachedChainRead(`reputation:${params.address}`, () => getOnChainReputationStats(params.address));
   }
 
   const tenantLeases = mockStore.listLeasesForTenant(params.email);
@@ -596,7 +601,7 @@ export async function getReputationStats(params: { email: string; address: Addre
  */
 export async function getActivityFeed(params: { email: string; address: Address }, limit = 12): Promise<ActivityItem[]> {
   if (!MOCK_MODE) {
-    return getOnChainActivityFeed(params.address, limit);
+    return cachedChainRead(`activity:${params.address}:${limit}`, () => getOnChainActivityFeed(params.address, limit));
   }
 
   const tenantLeases = mockStore.listLeasesForTenant(params.email);
@@ -655,7 +660,7 @@ export const escrowContractAddress = escrowAddress;
  */
 export async function getLeaseActivity(id: string): Promise<ActivityItem[]> {
   if (MOCK_MODE) return [];
-  return getOnChainLeaseActivity(BigInt(id));
+  return cachedChainRead(`lease-activity:${id}`, () => getOnChainLeaseActivity(BigInt(id)));
 }
 
 export type { TenancyCredentialSummary };
@@ -668,5 +673,6 @@ export type { TenancyCredentialSummary };
  */
 export async function getTenancyCredentials(address: Address): Promise<TenancyCredentialSummary[]> {
   if (MOCK_MODE) return [];
-  return getCredentialsForOwner(address);
+  // bigint fields — cached in memory only (sessionStorage persist silently skips it)
+  return cachedChainRead(`credentials:${address}`, () => getCredentialsForOwner(address));
 }

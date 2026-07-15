@@ -3,6 +3,7 @@ import { envResult } from "@/lib/env";
 import { executeCircleChallenge } from "@/lib/circleSdk";
 import { publicClient, usdcAddress } from "@/lib/contracts/rentPactEscrow";
 import { encodeTransfer, toBaseUnits } from "@/lib/contracts/onChainLease";
+import { invalidateChainCache } from "@/lib/chainCache";
 
 /**
  * Circle Web3 Services integration layer.
@@ -262,6 +263,15 @@ export interface GaslessCallParams {
  * Phase 5 wires the Paymaster and a deployed contract address are both configured.
  */
 export async function sendGaslessTransaction(params: GaslessCallParams): Promise<{ hash: `0x${string}` }> {
+  const result = await sendGaslessTransactionInner(params);
+  // Any successful on-chain write can change lease/activity/reputation
+  // state — drop the chain read cache so every subsequent read (including
+  // the re-read each mutation does right after its tx) sees fresh data.
+  invalidateChainCache();
+  return result;
+}
+
+async function sendGaslessTransactionInner(params: GaslessCallParams): Promise<{ hash: `0x${string}` }> {
   if (!MOCK_MODE) {
     const appId = requireAppId();
     const cachedSession = getCircleSession();
