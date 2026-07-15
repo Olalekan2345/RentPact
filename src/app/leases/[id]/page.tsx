@@ -81,6 +81,7 @@ export default function LeaseDetailPage() {
   const [submittingReview, setSubmittingReview] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [onChainActivity, setOnChainActivity] = useState<ActivityItem[] | null>(null);
+  const [showProof, setShowProof] = useState(false);
   const [moveOut, setMoveOut] = useState<MoveOutCondition | null | undefined>(undefined);
   const [moveOutNotes, setMoveOutNotes] = useState("");
   const [moveOutRoom, setMoveOutRoom] = useState("");
@@ -123,10 +124,17 @@ export default function LeaseDetailPage() {
 
   useEffect(() => {
     if (!lease) return;
-    getLeaseActivity(lease.id).then(setOnChainActivity);
     fetchMoveOutCondition(lease.id).then(setMoveOut);
     fetchThread(lease.id).then(setThreadMessages);
   }, [lease]);
+
+  // The on-chain proof panel scans every event ever emitted for this lease —
+  // slow over a public RPC, and most visits never look at it. Only fetch
+  // once the viewer actually opens the panel.
+  useEffect(() => {
+    if (!lease || !showProof) return;
+    getLeaseActivity(lease.id).then(setOnChainActivity);
+  }, [lease, showProof]);
 
   useEffect(() => {
     const fromQuery = searchParams.get("raiseDisputeFor");
@@ -505,7 +513,15 @@ export default function LeaseDetailPage() {
               </p>
 
               <div className="mt-4 flex flex-col gap-2">
-                {onChainActivity === null ? (
+                {!showProof ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowProof(true)}
+                    className="w-fit text-sm font-medium text-forest-500 underline"
+                  >
+                    View transaction history →
+                  </button>
+                ) : onChainActivity === null ? (
                   <Skeleton className="h-16 w-full" />
                 ) : onChainActivity.length === 0 ? (
                   <p className="text-sm text-ink-soft">No confirmed transactions yet.</p>

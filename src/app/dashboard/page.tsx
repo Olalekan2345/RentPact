@@ -14,7 +14,6 @@ import { UsdcAmount } from "@/components/UsdcAmount";
 import { UsdcIcon } from "@/components/icons/UsdcIcon";
 import { formatUSDC, formatDate, formatDateTime } from "@/lib/format";
 import { INTERVAL_DAYS } from "@/lib/contracts/frequency";
-import { explorerTxUrl } from "@/lib/chain";
 import { CAUTION_CLAIM_WINDOW_MS, DAY_MS } from "@/lib/constitution";
 import {
   listLeasesForTenant,
@@ -23,23 +22,9 @@ import {
   nextReleaseDate,
   pendingPeriods,
   signDeadline,
-  getActivityFeed,
   type Lease,
-  type ActivityItem,
 } from "@/lib/leaseData";
 import { fetchListingsForLandlord, type Listing } from "@/lib/listings";
-
-const ACTIVITY_LABEL: Record<ActivityItem["type"], string> = {
-  deposit: "Deposited into escrow",
-  signed: "Lease signed",
-  release: "Tranche released",
-  "dispute-raised": "Dispute raised",
-  "dispute-resolved": "Dispute resolved",
-  cancelled: "Lease cancelled",
-  "caution-claim-filed": "Caution fee claim filed",
-  "caution-released": "Caution fee returned",
-  "caution-claim-resolved": "Caution fee claim resolved",
-};
 
 export default function DashboardPage() {
   const { session, isLoading } = useAuth();
@@ -47,7 +32,6 @@ export default function DashboardPage() {
   const [tenantLeases, setTenantLeases] = useState<Lease[] | null>(null);
   const [landlordLeases, setLandlordLeases] = useState<Lease[] | null>(null);
   const [myListings, setMyListings] = useState<Listing[] | null>(null);
-  const [activity, setActivity] = useState<ActivityItem[] | null>(null);
 
   useEffect(() => {
     if (!isLoading && !session) router.push("/auth");
@@ -58,7 +42,6 @@ export default function DashboardPage() {
     listLeasesForTenant(session).then(setTenantLeases);
     listLeasesForLandlord(session).then(setLandlordLeases);
     fetchListingsForLandlord(session.email).then(setMyListings);
-    getActivityFeed(session).then(setActivity);
   }, [session]);
 
   const stats = useMemo(() => {
@@ -307,50 +290,13 @@ export default function DashboardPage() {
           </Link>
         </div>
 
-        {/* Recent activity */}
+        {/* Recent activity lives in Wallet → Transactions — rendering it here
+            too meant a second full event-log scan on the app's most-visited
+            page, so the dashboard just links to it instead. */}
         <section className="mt-10">
-          <h2 className="text-lg font-semibold text-ink">Recent activity</h2>
-          <div className="mt-4">
-            {activity === null ? (
-              <Skeleton className="h-32 w-full" />
-            ) : activity.length === 0 ? (
-              <p className="text-sm text-ink-soft">Nothing yet — activity shows up here as leases move.</p>
-            ) : (
-              <div className="flex flex-col divide-y divide-forest-100 rounded-lg border border-forest-100/60 bg-cream-100">
-                {activity.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
-                    <div className="min-w-0">
-                      <p className="font-medium text-ink">{ACTIVITY_LABEL[item.type]}</p>
-                      <p className="flex items-center gap-1 text-xs text-ink-soft">
-                        {formatDate(new Date(item.timestamp), "long")}
-                        {item.amount !== null && (
-                          <>
-                            {" · "}
-                            <UsdcAmount amount={item.amount} iconSize={11} />
-                          </>
-                        )}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-3">
-                      <Link href={`/leases/${item.leaseId}`} className="text-xs font-medium text-forest-500 underline">
-                        View lease
-                      </Link>
-                      {item.txHash && (
-                        <a
-                          href={explorerTxUrl(item.txHash)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="font-mono text-xs text-ink-soft underline"
-                        >
-                          {item.txHash.slice(0, 6)}…{item.txHash.slice(-4)}
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <Link href="/wallet/transactions" className="text-sm font-medium text-forest-500 underline">
+            View recent activity and transactions →
+          </Link>
         </section>
 
         <section className="mt-12">
