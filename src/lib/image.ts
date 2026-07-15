@@ -1,3 +1,7 @@
+import { supabaseBrowser } from "@/lib/supabase/client";
+
+const BUCKET = "photos";
+
 export function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -33,4 +37,48 @@ export function resizeImageToDataUrl(file: File, maxDimension: number): Promise<
     };
     reader.readAsDataURL(file);
   });
+}
+
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [header, base64] = dataUrl.split(",");
+  const mime = header.match(/data:(.*?);/)?.[1] ?? "application/octet-stream";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+async function uploadBlob(blob: Blob, folder: string, ext: string, contentType: string): Promise<string> {
+  const supabase = supabaseBrowser();
+  const path = `${folder}/${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from(BUCKET).upload(path, blob, {
+    contentType,
+    cacheControl: "31536000", // content-addressed by random path — safe to cache forever
+    upsert: false,
+  });
+  if (error) throw error;
+  return supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+}
+
+/**
+ * Uploads a data-URL image (already resized/encoded) to Supabase Storage and
+ * returns its public URL. Used where the caller also needs the data URL
+ * itself — e.g. evidence photos hash the content before upload.
+ */
+export function uploadDataUrl(dataUrl: string, folder: string): Promise<string> {
+  return uploadBlob(dataUrlToBlob(dataUrl), folder, "jpg", "image/jpeg");
+}
+
+/** Resize client-side, upload to Supabase Storage, return the public URL. */
+export async function uploadImage(file: File, folder: string, maxDimension = 800): Promise<string> {
+  const dataUrl = await resizeImageToDataUrl(file, maxDimension);
+  return uploadDataUrl(dataUrl, folder);
+}
+
+/** Upload a raw file (e.g. a walkthrough video) without re-encoding. Goes
+ * straight from the browser to Supabase Storage, so it isn't subject to any
+ * serverless request-body limit. */
+export function uploadFile(file: File, folder: string): Promise<string> {
+  const ext = file.name.includes(".") ? file.name.split(".").pop()!.toLowerCase() : "bin";
+  return uploadBlob(file, folder, ext, file.type || "application/octet-stream");
 }

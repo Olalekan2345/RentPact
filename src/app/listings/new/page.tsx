@@ -15,7 +15,7 @@ import { FREQUENCY_OPTIONS, INTERVAL_DAYS } from "@/lib/contracts/frequency";
 import { UsdcAmount } from "@/components/UsdcAmount";
 import { createListing } from "@/lib/listings";
 import { fetchTemplates, saveTemplate, type LeaseTemplate } from "@/lib/templates";
-import { resizeImageToDataUrl, fileToDataUrl } from "@/lib/image";
+import { resizeImageToDataUrl, uploadDataUrl, uploadImage, uploadFile } from "@/lib/image";
 import {
   CONDITION_AREAS,
   CONDITION_STATUS_OPTIONS,
@@ -304,12 +304,13 @@ export default function NewListingPage() {
 
     setUploadingPhoto(true);
     try {
-      const url = await resizeImageToDataUrl(file, 800);
-      const hash = await sha256Hex(url);
+      const dataUrl = await resizeImageToDataUrl(file, 800);
+      const hash = await sha256Hex(dataUrl);
+      const url = await uploadDataUrl(dataUrl, "condition");
       setPhotos((prev) => [...prev, { room: roomName.trim(), url, hash }]);
       setRoomName("");
     } catch {
-      setConditionError("Could not read that image. Try a different file.");
+      setConditionError("Could not upload that image. Try a different file.");
     } finally {
       setUploadingPhoto(false);
     }
@@ -332,10 +333,9 @@ export default function NewListingPage() {
 
     setUploadingCoverPhoto(true);
     try {
-      const dataUrl = await resizeImageToDataUrl(file, 800);
-      setPhotoUrl(dataUrl);
+      setPhotoUrl(await uploadImage(file, "listings"));
     } catch {
-      setCoverPhotoError("Could not read that image. Try a different file.");
+      setCoverPhotoError("Could not upload that image. Try a different file.");
     } finally {
       setUploadingCoverPhoto(false);
     }
@@ -354,10 +354,9 @@ export default function NewListingPage() {
 
     setUploadingVideo(true);
     try {
-      const dataUrl = await fileToDataUrl(file);
-      setVideoUrl(dataUrl);
+      setVideoUrl(await uploadFile(file, "videos"));
     } catch {
-      setVideoError("Could not read that video. Try a different file.");
+      setVideoError("Could not upload that video. Try a different file.");
     } finally {
       setUploadingVideo(false);
     }

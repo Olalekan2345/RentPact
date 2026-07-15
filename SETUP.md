@@ -67,8 +67,9 @@ mode); see `src/lib/leaseData.ts`.
 2. In **Project Settings → API**, copy the **Project URL**, **anon public**
    key, and **service_role** key into `.env.local` as shown in the table
    above.
-3. In the Supabase SQL editor, run `supabase/migrations/0001_init.sql` (the
-   whole file, once) to create all tables, indexes, and RLS policies.
+3. In the Supabase SQL editor, run every file in `supabase/migrations/` in
+   numeric order (each whole file, once) — tables, indexes, RLS policies,
+   and the public `photos` storage bucket.
 4. Set up Google as an auth provider:
    - **Google Cloud Console** (console.cloud.google.com): create/select a
      project → **APIs & Services → OAuth consent screen** → External → fill

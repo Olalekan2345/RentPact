@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import { Button, Card, CardContent, Skeleton } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 import { fetchProfile, updateProfile, type UserProfile } from "@/lib/profile";
-import { resizeImageToDataUrl } from "@/lib/image";
+import { uploadImage } from "@/lib/image";
 
 export default function AccountSettingsPage() {
   const { session, isLoading } = useAuth();
@@ -64,10 +64,9 @@ export default function AccountSettingsPage() {
 
     setUploadingPhoto(true);
     try {
-      const dataUrl = await resizeImageToDataUrl(file, 256);
-      setPhotoInput(dataUrl);
+      setPhotoInput(await uploadImage(file, "avatars", 256));
     } catch {
-      setPhotoUploadError("Could not read that image. Try a different file.");
+      setPhotoUploadError("Could not upload that image. Try a different file.");
     } finally {
       setUploadingPhoto(false);
     }

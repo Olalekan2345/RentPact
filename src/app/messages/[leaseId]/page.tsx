@@ -8,7 +8,7 @@ import { AppShell } from "@/components/AppShell";
 import { PropertyImage } from "@/components/PropertyImage";
 import { Badge, Button, Skeleton } from "@/components/ui";
 import { formatDate } from "@/lib/format";
-import { resizeImageToDataUrl, fileToDataUrl } from "@/lib/image";
+import { uploadImage, uploadFile } from "@/lib/image";
 import { CONDITION_AREAS, type ConditionAreaKey } from "@/lib/condition";
 import {
   SEVERITY_OPTIONS,
@@ -167,10 +167,10 @@ export default function MessageThreadPage() {
     }
     setUploadingPhoto(true);
     try {
-      const url = await resizeImageToDataUrl(file, 800);
+      const url = await uploadImage(file, "maintenance");
       setPhotos((prev) => [...prev, url]);
     } catch {
-      setMaintenanceError("Could not read that image. Try a different file.");
+      setMaintenanceError("Could not upload that image. Try a different file.");
     } finally {
       setUploadingPhoto(false);
     }
@@ -187,10 +187,9 @@ export default function MessageThreadPage() {
     }
     setUploadingVideo(true);
     try {
-      const dataUrl = await fileToDataUrl(file);
-      setVideoUrl(dataUrl);
+      setVideoUrl(await uploadFile(file, "maintenance"));
     } catch {
-      setMaintenanceError("Could not read that video. Try a different file.");
+      setMaintenanceError("Could not upload that video. Try a different file.");
     } finally {
       setUploadingVideo(false);
     }

@@ -6,7 +6,7 @@ import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Button } from "@/components/ui";
 import { UsdcAmount } from "@/components/UsdcAmount";
 import { formatUSDC } from "@/lib/format";
-import { resizeImageToDataUrl } from "@/lib/image";
+import { resizeImageToDataUrl, uploadDataUrl } from "@/lib/image";
 import { sha256Hex } from "@/lib/condition";
 import { hashClaim, useCautionFeeLabel, type ClaimItem } from "@/lib/cautionFee";
 
@@ -51,9 +51,14 @@ export function CautionClaimModal({
 
   const handlePhoto = async (index: number, file: File | undefined) => {
     if (!file) return;
-    const url = await resizeImageToDataUrl(file, 800);
-    const hash = await sha256Hex(url);
-    updateItem(index, { photoUrl: url, photoHash: hash });
+    try {
+      const dataUrl = await resizeImageToDataUrl(file, 800);
+      const hash = await sha256Hex(dataUrl);
+      const url = await uploadDataUrl(dataUrl, "evidence");
+      updateItem(index, { photoUrl: url, photoHash: hash });
+    } catch {
+      setError("Could not upload that photo. Try a different file.");
+    }
   };
 
   const handleSubmit = async () => {

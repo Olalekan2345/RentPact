@@ -26,7 +26,7 @@ import { fetchListingIdForLease, fetchListing, type Listing } from "@/lib/listin
 import { FREQUENCY_OPTIONS, INTERVAL_DAYS } from "@/lib/contracts/frequency";
 import { MOCK_MODE } from "@/lib/circle";
 import { explorerTxUrl, explorerAddressUrl } from "@/lib/chain";
-import { resizeImageToDataUrl } from "@/lib/image";
+import { resizeImageToDataUrl, uploadDataUrl } from "@/lib/image";
 import { sha256Hex } from "@/lib/condition";
 import {
   fetchMoveOutCondition,
@@ -255,12 +255,13 @@ export default function LeaseDetailPage() {
 
     setUploadingMoveOutPhoto(true);
     try {
-      const url = await resizeImageToDataUrl(file, 800);
-      const hash = await sha256Hex(url);
+      const dataUrl = await resizeImageToDataUrl(file, 800);
+      const hash = await sha256Hex(dataUrl);
+      const url = await uploadDataUrl(dataUrl, "move-out");
       setMoveOutPhotos((prev) => [...prev, { room: moveOutRoom.trim(), url, hash }]);
       setMoveOutRoom("");
     } catch {
-      setMoveOutError("Could not read that image. Try a different file.");
+      setMoveOutError("Could not upload that image. Try a different file.");
     } finally {
       setUploadingMoveOutPhoto(false);
     }
