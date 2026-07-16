@@ -75,6 +75,19 @@ export async function deactivateListing(id: string): Promise<void> {
   await fetch(`/api/listings/${id}`, { method: "PATCH" });
 }
 
+/** Atomically claims a listing before funding escrow. Returns false if another tenant already claimed it. */
+export async function reserveListing(id: string): Promise<boolean> {
+  const res = await fetch(`/api/listings/${id}/reserve`, { method: "POST" });
+  if (!res.ok) return false;
+  const json = await res.json();
+  return json.reserved === true;
+}
+
+/** Rolls back a reserveListing() claim when the deposit that followed it failed. */
+export async function reactivateListing(id: string): Promise<void> {
+  await fetch(`/api/listings/${id}/reserve`, { method: "DELETE" });
+}
+
 export async function linkLeaseToListing(leaseId: string, listingId: string): Promise<void> {
   await fetch("/api/lease-listing", {
     method: "POST",

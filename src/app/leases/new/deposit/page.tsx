@@ -11,7 +11,7 @@ import { LogoMark } from "@/components/Logo";
 import { UsdcAmount } from "@/components/UsdcAmount";
 import { getGatewayBalances, initiateCctpDeposit, MOCK_MODE, type ChainBalance } from "@/lib/circle";
 import { createLease } from "@/lib/leaseData";
-import { deactivateListing, linkLeaseToListing } from "@/lib/listings";
+import { reserveListing, reactivateListing, linkLeaseToListing } from "@/lib/listings";
 import { migrateListingThreadToLease } from "@/lib/messages";
 import type { LeaseDraft } from "@/lib/leaseDraft";
 import { FREQUENCY_OPTIONS } from "@/lib/contracts/frequency";
@@ -70,6 +70,19 @@ export default function DepositPage() {
       return;
     }
 
+    // Claimed up front, atomically, so a second tenant racing to fund the
+    // same listing gets turned away here instead of both ending up with a
+    // lease pending the landlord's signature for the same property.
+    const listingId = window.sessionStorage.getItem("rentpact:listing-id");
+    let reserved = false;
+    if (listingId) {
+      reserved = await reserveListing(listingId);
+      if (!reserved) {
+        setError("This property was just taken by another tenant. Please choose another listing.");
+        return;
+      }
+    }
+
     try {
       if (needsBridge) {
         setStep("bridging");
@@ -92,10 +105,8 @@ export default function DepositPage() {
       });
 
       window.sessionStorage.removeItem("rentpact:lease-draft");
-      const listingId = window.sessionStorage.getItem("rentpact:listing-id");
       if (listingId) {
         window.sessionStorage.removeItem("rentpact:listing-id");
-        deactivateListing(listingId).catch(() => {});
         linkLeaseToListing(lease.id, listingId).catch(() => {});
         migrateListingThreadToLease(listingId, lease.id).catch(() => {});
       }
@@ -106,6 +117,7 @@ export default function DepositPage() {
       console.error("Deposit failed:", err);
       setError(err instanceof Error ? err.message : "Deposit failed. Please try again.");
       setStep("select-source");
+      if (reserved && listingId) reactivateListing(listingId).catch(() => {});
     }
   }, [draft, session, needsBridge, selectedChain, totalDue, router]);
 

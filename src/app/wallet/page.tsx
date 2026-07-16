@@ -10,6 +10,7 @@ import { CurrencyEquivalent } from "@/components/CurrencyEquivalent";
 import { UpcomingPaymentsCalendar } from "@/components/UpcomingPaymentsCalendar";
 import { UsdcAmount } from "@/components/UsdcAmount";
 import { UsdcIcon } from "@/components/icons/UsdcIcon";
+import { RefreshIcon } from "@/components/icons/NavIcons";
 import { getGatewayBalances, transferOut } from "@/lib/circle";
 import { listLeasesForTenant, listLeasesForLandlord, type Lease } from "@/lib/leaseData";
 import { useCautionFeeLabel } from "@/lib/cautionFee";
@@ -22,6 +23,7 @@ export default function WalletOverviewPage() {
   const router = useRouter();
 
   const [balance, setBalance] = useState<number | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [leases, setLeases] = useState<Lease[] | null>(null);
 
@@ -46,6 +48,15 @@ export default function WalletOverviewPage() {
   useEffect(() => {
     refreshBalance();
   }, [refreshBalance]);
+
+  const handleRefreshClick = async () => {
+    setRefreshing(true);
+    try {
+      await refreshBalance();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     if (!session) return;
@@ -120,7 +131,19 @@ export default function WalletOverviewPage() {
 
       <Card>
         <CardContent className="pt-6">
-          <p className="text-xs uppercase tracking-wide text-ink-soft">Balance</p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-xs uppercase tracking-wide text-ink-soft">Balance</p>
+            <button
+              type="button"
+              onClick={handleRefreshClick}
+              disabled={balance === null || refreshing}
+              aria-label="Refresh balance"
+              title="Refresh balance"
+              className="rounded-full p-1 text-ink-soft transition-colors hover:bg-forest-50 hover:text-forest-500 disabled:opacity-50"
+            >
+              <RefreshIcon className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            </button>
+          </div>
           {balance === null ? (
             <Skeleton className="mt-2 h-9 w-40" />
           ) : (

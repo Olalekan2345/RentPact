@@ -129,6 +129,30 @@ export async function deactivateListing(id: string): Promise<void> {
   await supabaseAdmin().from("listings").update({ active: false }).eq("id", id);
 }
 
+/**
+ * Atomically claims a listing for the caller about to fund escrow, closing
+ * the race where two tenants both start paying for the same property before
+ * either's deposit lands. The `.eq("active", true)` predicate means only one
+ * concurrent request can actually flip a row — Postgres serializes the
+ * update, so a second caller sees zero rows affected and gets `false`.
+ * Returns whether *this* call was the one that claimed it.
+ */
+export async function reserveListing(id: string): Promise<boolean> {
+  const { data, error } = await supabaseAdmin()
+    .from("listings")
+    .update({ active: false })
+    .eq("id", id)
+    .eq("active", true)
+    .select("id");
+  if (error) throw error;
+  return (data ?? []).length > 0;
+}
+
+/** Rolls back a reserveListing() claim when the deposit that followed it failed. */
+export async function reactivateListing(id: string): Promise<void> {
+  await supabaseAdmin().from("listings").update({ active: true }).eq("id", id);
+}
+
 export async function listListingsForLandlord(landlordEmail: string): Promise<Listing[]> {
   const normalized = landlordEmail.trim().toLowerCase();
   const { data } = await supabaseAdmin()
