@@ -2,13 +2,12 @@ import type { Address } from "viem";
 import type { ReleaseFrequency } from "@/components/escrow";
 import { MOCK_MODE, sendGaslessTransaction } from "@/lib/circle";
 import * as mockStore from "@/lib/leaseStore";
-import { getLeaseMetadata, saveLeaseMetadata } from "@/lib/leaseMetadataStore";
+import { getLeaseMetadata, saveLeaseMetadata, findLeaseIdsForAddress } from "@/lib/leaseMetadataStore";
 import { cachedChainRead } from "@/lib/chainCache";
 import {
   readLease,
   readPendingPeriods as readOnChainPendingPeriods,
   readAllowance,
-  findLeaseIdsForAddress,
   extractLeaseIdFromReceipt,
   encodeApprove,
   encodeCreateLease,
@@ -202,6 +201,8 @@ export async function createLease(input: CreateLeaseInput): Promise<{ lease: Lea
       photoUrl: input.photoUrl,
       tenantEmail: input.tenantEmail,
       landlordEmail: input.landlordEmail,
+      tenantAddress: input.tenantAddress,
+      landlordAddress: input.landlordAddress,
     });
 
     const lease = await onChainLeaseToLease(leaseId);
@@ -514,7 +515,7 @@ export async function listLeasesForTenant(params: { email: string; address: Addr
   if (!MOCK_MODE) {
     return cachedChainRead(`leases:tenant:${params.address}`, async () => {
       const ids = await findLeaseIdsForAddress(params.address, "tenant");
-      const leases = await Promise.all(ids.map(onChainLeaseToLease));
+      const leases = await Promise.all(ids.map((id) => onChainLeaseToLease(BigInt(id))));
       return leases.sort((a, b) => b.createdAt - a.createdAt);
     });
   }
@@ -525,7 +526,7 @@ export async function listLeasesForLandlord(params: { email: string; address: Ad
   if (!MOCK_MODE) {
     return cachedChainRead(`leases:landlord:${params.address}`, async () => {
       const ids = await findLeaseIdsForAddress(params.address, "landlord");
-      const leases = await Promise.all(ids.map(onChainLeaseToLease));
+      const leases = await Promise.all(ids.map((id) => onChainLeaseToLease(BigInt(id))));
       return leases.sort((a, b) => b.createdAt - a.createdAt);
     });
   }

@@ -10,16 +10,28 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { leaseId, propertyAddress, propertyType, photoUrl, tenantEmail, landlordEmail } = await req.json();
+    const { leaseId, propertyAddress, propertyType, photoUrl, tenantEmail, landlordEmail, tenantAddress, landlordAddress } =
+      await req.json();
 
-    if (!leaseId || !propertyAddress || !propertyType || !tenantEmail || !landlordEmail) {
+    if (!leaseId || !propertyAddress || !propertyType || !tenantEmail || !landlordEmail || !tenantAddress || !landlordAddress) {
       return NextResponse.json(
-        { error: "leaseId, propertyAddress, propertyType, tenantEmail, landlordEmail are required" },
+        {
+          error:
+            "leaseId, propertyAddress, propertyType, tenantEmail, landlordEmail, tenantAddress, landlordAddress are required",
+        },
         { status: 400 },
       );
     }
 
-    await saveLeaseMetadata(leaseId, { propertyAddress, propertyType, photoUrl: photoUrl ?? null, tenantEmail, landlordEmail });
+    await saveLeaseMetadata(leaseId, {
+      propertyAddress,
+      propertyType,
+      photoUrl: photoUrl ?? null,
+      tenantEmail,
+      landlordEmail,
+      tenantAddress,
+      landlordAddress,
+    });
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });

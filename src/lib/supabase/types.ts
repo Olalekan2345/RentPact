@@ -138,6 +138,8 @@ type LeaseMetadataRow = {
   photo_url: string | null;
   tenant_email: string;
   landlord_email: string;
+  tenant_address: string | null;
+  landlord_address: string | null;
 };
 
 type WalletTransfersRow = {

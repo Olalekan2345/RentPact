@@ -13,6 +13,8 @@ export interface LeaseMetadata {
   photoUrl: string | null;
   tenantEmail: string;
   landlordEmail: string;
+  tenantAddress: string;
+  landlordAddress: string;
 }
 
 export async function saveLeaseMetadata(leaseId: string, metadata: LeaseMetadata): Promise<void> {
@@ -28,4 +30,12 @@ export async function getLeaseMetadata(leaseId: string): Promise<LeaseMetadata |
   if (!res.ok) return null;
   const data = await res.json();
   return data.metadata ?? null;
+}
+
+/** Fast path for "which leases is this wallet part of" — a Postgres lookup instead of a full blockchain event scan. */
+export async function findLeaseIdsForAddress(address: string, role: "tenant" | "landlord"): Promise<string[]> {
+  const res = await fetch(`/api/lease-metadata/by-address?address=${encodeURIComponent(address)}&role=${role}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.leaseIds ?? [];
 }
