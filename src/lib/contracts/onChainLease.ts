@@ -324,6 +324,10 @@ export async function readPendingPeriods(leaseId: bigint): Promise<number> {
 // wide fromBlock:0 query must be paged through in chunks and aggregated.
 const LOG_QUERY_CHUNK_BLOCKS = 9_000n;
 
+/** Re-scan this many trailing blocks past the saved cursor, in case a block
+ * near the edge was still being reorganized when it was last scanned. */
+const SCAN_OVERLAP_BLOCKS = 50n;
+
 type ActivityEventName =
   | "LeaseCreated"
   | "LeaseSigned"
@@ -335,7 +339,60 @@ type ActivityEventName =
   | "CautionReleased"
   | "CautionClaimResolved";
 
-/** Pages a getContractEvents query across Arc's 10,000-block eth_getLogs cap. */
+interface StoredLog {
+  args: Record<string, unknown>;
+  transactionHash: Hex;
+  blockNumber: bigint;
+  logIndex: number;
+}
+
+// Event logs are append-only, so scans are cached incrementally in
+// localStorage: each (event, filter) key remembers the logs found so far and
+// the block it has scanned up to. The next call only scans the blocks minted
+// since. Without this, every scan re-walked the whole history from the
+// deploy block — ~44 sequential getLogs calls at Arc's 10,000-block cap and
+// growing by ~20/day, against an RPC that only serves one request at a time.
+function bigintReplacer(_key: string, value: unknown): unknown {
+  return typeof value === "bigint" ? { __bigint: value.toString() } : value;
+}
+
+function bigintReviver(_key: string, value: unknown): unknown {
+  if (value !== null && typeof value === "object" && "__bigint" in (value as Record<string, unknown>)) {
+    return BigInt((value as { __bigint: string }).__bigint);
+  }
+  return value;
+}
+
+interface ScanCache {
+  cursor: bigint;
+  logs: StoredLog[];
+}
+
+function scanCacheKey(address: Address, eventName: string, args: Record<string, unknown> | undefined): string {
+  return `rentpact:logscan:v1:${address}:${eventName}:${JSON.stringify(args ?? {}, bigintReplacer)}`;
+}
+
+function readScanCache(key: string): ScanCache | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw, bigintReviver) as ScanCache) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeScanCache(key: string, cache: ScanCache) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(cache, bigintReplacer));
+  } catch {
+    // quota — scans still work, just not incrementally next time
+  }
+}
+
+/** Pages a getContractEvents query across Arc's 10,000-block eth_getLogs cap,
+ * resuming from the last scanned block instead of re-walking full history. */
 async function queryEventsChunked<T>(
   eventName: ActivityEventName,
   args: Record<string, unknown> | undefined,
@@ -344,8 +401,18 @@ async function queryEventsChunked<T>(
   const address = requireEscrowAddress();
   const latestBlock = await publicClient.getBlockNumber();
 
-  const results: T[] = [];
-  for (let fromBlock = deployBlock; fromBlock <= latestBlock; fromBlock += LOG_QUERY_CHUNK_BLOCKS) {
+  const key = scanCacheKey(address, eventName, args);
+  const cached = readScanCache(key);
+  const storedLogs: StoredLog[] = cached?.logs ?? [];
+  const seen = new Set(storedLogs.map((l) => `${l.transactionHash}:${l.logIndex}`));
+
+  let startBlock = deployBlock;
+  if (cached) {
+    const resumeFrom = cached.cursor - SCAN_OVERLAP_BLOCKS;
+    startBlock = resumeFrom > deployBlock ? resumeFrom : deployBlock;
+  }
+
+  for (let fromBlock = startBlock; fromBlock <= latestBlock; fromBlock += LOG_QUERY_CHUNK_BLOCKS) {
     const toBlock =
       fromBlock + LOG_QUERY_CHUNK_BLOCKS - 1n > latestBlock ? latestBlock : fromBlock + LOG_QUERY_CHUNK_BLOCKS - 1n;
 
@@ -358,9 +425,24 @@ async function queryEventsChunked<T>(
       toBlock,
     });
     for (const log of logs) {
-      const mapped = mapLog(log);
-      if (mapped !== null) results.push(mapped);
+      const dedupeKey = `${log.transactionHash}:${log.logIndex}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      storedLogs.push({
+        args: (log.args ?? {}) as Record<string, unknown>,
+        transactionHash: log.transactionHash,
+        blockNumber: log.blockNumber,
+        logIndex: log.logIndex,
+      });
     }
+  }
+
+  writeScanCache(key, { cursor: latestBlock, logs: storedLogs });
+
+  const results: T[] = [];
+  for (const log of storedLogs) {
+    const mapped = mapLog(log);
+    if (mapped !== null) results.push(mapped);
   }
   return results;
 }
@@ -454,9 +536,44 @@ export interface ActivityItem {
   txHash: string | null;
 }
 
+// Block timestamps are immutable, but the activity feed needs one per event —
+// previously a fresh getBlock round trip each, on an RPC that serves one
+// request at a time. Cached in memory + localStorage.
+const BLOCK_TS_KEY = "rentpact:block-ts:v1";
+const blockTsMemory = new Map<string, number>();
+let blockTsLoaded = false;
+
+function loadBlockTsCache() {
+  if (blockTsLoaded || typeof window === "undefined") return;
+  blockTsLoaded = true;
+  try {
+    const raw = window.localStorage.getItem(BLOCK_TS_KEY);
+    if (!raw) return;
+    for (const [k, v] of Object.entries(JSON.parse(raw) as Record<string, number>)) {
+      blockTsMemory.set(k, v);
+    }
+  } catch {
+    // ignore — cache rebuilds naturally
+  }
+}
+
 async function blockTimestampMs(blockNumber: bigint): Promise<number> {
+  loadBlockTsCache();
+  const key = blockNumber.toString();
+  const hit = blockTsMemory.get(key);
+  if (hit !== undefined) return hit;
+
   const block = await publicClient.getBlock({ blockNumber });
-  return Number(block.timestamp) * 1000;
+  const ts = Number(block.timestamp) * 1000;
+  blockTsMemory.set(key, ts);
+  if (typeof window !== "undefined" && blockTsMemory.size <= 5000) {
+    try {
+      window.localStorage.setItem(BLOCK_TS_KEY, JSON.stringify(Object.fromEntries(blockTsMemory)));
+    } catch {
+      // quota — memory cache still applies
+    }
+  }
+  return ts;
 }
 
 /**

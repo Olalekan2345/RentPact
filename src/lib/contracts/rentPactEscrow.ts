@@ -1,11 +1,55 @@
-import { createPublicClient, http, type Address } from "viem";
+import { createPublicClient, http, type Address, type Transport } from "viem";
 import { arcTestnet } from "@/lib/chain";
 import { rentPactEscrowAbi, erc20Abi } from "@/lib/contracts/rentPactEscrowAbi";
 import { envResult } from "@/lib/env";
 
+/**
+ * Arc's public RPC enforces two hard limits (verified empirically):
+ *  - roughly one in-flight request per client — parallel calls are rejected
+ *    with -32011 "request limit reached", and viem's retries then stack
+ *    seconds of backoff on top
+ *  - whole JSON-RPC batches of eth_call are rejected outright, so viem's
+ *    `batch` transport option must NOT be enabled here
+ * This wrapper funnels every request through a single-file queue (so the app
+ * can keep using Promise.all naturally), and retries with a short pause if a
+ * limit error still slips through.
+ */
+function arcFriendly(base: Transport): Transport {
+  let tail: Promise<void> = Promise.resolve();
+  return (config) => {
+    const transport = base(config);
+    const originalRequest = transport.request.bind(transport);
+
+    const request = ((params: Parameters<typeof originalRequest>[0]) => {
+      const exec = async (): Promise<unknown> => {
+        for (let attempt = 0; ; attempt++) {
+          try {
+            return await originalRequest(params);
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            if (attempt < 4 && message.includes("request limit reached")) {
+              await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+              continue;
+            }
+            throw err;
+          }
+        }
+      };
+      const result = tail.then(exec, exec);
+      tail = result.then(
+        () => undefined,
+        () => undefined,
+      );
+      return result;
+    }) as typeof transport.request;
+
+    return { ...transport, request };
+  };
+}
+
 export const publicClient = createPublicClient({
   chain: arcTestnet,
-  transport: http(),
+  transport: arcFriendly(http()),
 });
 
 /** Deployed RentPactEscrow address, or null until Phase 2's deploy step has been run. */
