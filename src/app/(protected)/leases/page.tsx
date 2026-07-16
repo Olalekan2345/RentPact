@@ -35,8 +35,8 @@ export default function LeasesPage() {
 
   useEffect(() => {
     if (!session) return;
-    listLeasesForTenant(session).then(setTenantLeases);
-    listLeasesForLandlord(session).then(setLandlordLeases);
+    listLeasesForTenant(session, false).then(setTenantLeases);
+    listLeasesForLandlord(session, false).then(setLandlordLeases);
   }, [session]);
 
   const rows: Row[] | null = useMemo(() => {

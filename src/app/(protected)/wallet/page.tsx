@@ -60,7 +60,7 @@ export default function WalletOverviewPage() {
 
   useEffect(() => {
     if (!session) return;
-    Promise.all([listLeasesForTenant(session), listLeasesForLandlord(session)]).then(([tenant, landlord]) => {
+    Promise.all([listLeasesForTenant(session, false), listLeasesForLandlord(session, false)]).then(([tenant, landlord]) => {
       setLeases([...tenant, ...landlord]);
     });
   }, [session]);

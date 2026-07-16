@@ -61,8 +61,8 @@ export default function PublicProfilePage() {
       getReputationStats(target).then(setReputation);
       getCautionReturnRate(target).then(setCautionReturnRate);
       getTenancyCredentials(target.address).then(setCredentials);
-      listLeasesForTenant(target).then(setTenantLeases);
-      listLeasesForLandlord(target).then(setLandlordLeases);
+      listLeasesForTenant(target, false).then(setTenantLeases);
+      listLeasesForLandlord(target, false).then(setLandlordLeases);
     }
   }, [email, address]);
 

@@ -56,7 +56,8 @@ export default function DisputePanelPage() {
   const [constitutionOpen, setConstitutionOpen] = useState(false);
 
   const refresh = useCallback(() => {
-    getLease(id).then(setLease);
+    // true: this page renders lease.resolvedDisputes, which needs the historical scan.
+    getLease(id, true).then(setLease);
     fetchThread(id).then(setThread);
     fetchDisputeRulingsForLease(id).then(setRulings);
     getLeaseActivity(id).then((items) => {

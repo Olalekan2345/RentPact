@@ -43,7 +43,7 @@ export default function EarningsPage() {
 
   useEffect(() => {
     if (!session) return;
-    listLeasesForLandlord(session).then(setLeases);
+    listLeasesForLandlord(session, false).then(setLeases);
     getActivityFeed(session, 1000).then((items) => setReleases(items.filter((i) => i.type === "release")));
   }, [session]);
 

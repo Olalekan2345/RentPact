@@ -94,7 +94,7 @@ export default function LeaseDetailPage() {
   const cautionLabel = useCautionFeeLabel();
 
   const refresh = useCallback(() => {
-    getLease(id).then(setLease);
+    getLease(id, false).then(setLease);
   }, [id]);
 
   useEffect(() => {

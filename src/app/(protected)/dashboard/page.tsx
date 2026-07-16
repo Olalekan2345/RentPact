@@ -38,8 +38,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!session) return;
-    listLeasesForTenant(session).then(setTenantLeases);
-    listLeasesForLandlord(session).then(setLandlordLeases);
+    listLeasesForTenant(session, false).then(setTenantLeases);
+    listLeasesForLandlord(session, false).then(setLandlordLeases);
     fetchListingsForLandlord(session.email).then(setMyListings);
   }, [session]);
 

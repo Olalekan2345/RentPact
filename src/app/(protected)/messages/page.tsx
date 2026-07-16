@@ -32,7 +32,7 @@ export default function MessagesPage() {
       const withDetails = await Promise.all(
         threads.map(async (t) => ({
           ...t,
-          lease: t.leaseId ? await getLease(t.leaseId) : null,
+          lease: t.leaseId ? await getLease(t.leaseId, false) : null,
           listing: t.listingId ? await fetchListing(t.listingId) : null,
         })),
       );

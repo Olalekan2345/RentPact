@@ -18,7 +18,8 @@
  * alert strip (already built) instead of duplicating into this event log.
  */
 
-import { getActivityFeed, getLease, type ActivityItem, type Lease } from "@/lib/leaseData";
+import { getActivityFeed, type ActivityItem } from "@/lib/leaseData";
+import { getLeaseMetadata } from "@/lib/leaseMetadataStore";
 import { fetchThreadsForEmail, type Thread } from "@/lib/messages";
 import { fetchReviewsFor, type Review } from "@/lib/reviews";
 import { formatUSDC } from "@/lib/format";
@@ -39,12 +40,15 @@ async function activityToNotifications(session: { email: string; address: `0x${s
   const items = await getActivityFeed(session, 30);
   if (items.length === 0) return [];
 
+  // Property labels only need Postgres metadata, not a full on-chain lease
+  // fetch (which would also pay for dispute/caution-claim event scans this
+  // feed never renders) — see onChainLeaseToLease's docstring in leaseData.ts.
   const leaseIds = [...new Set(items.map((i) => i.leaseId))];
-  const leases = new Map<string, Lease | null>(
-    await Promise.all(leaseIds.map(async (id) => [id, await getLease(id)] as const)),
+  const properties = new Map<string, string | null>(
+    await Promise.all(leaseIds.map(async (id) => [id, (await getLeaseMetadata(id))?.propertyAddress ?? null] as const)),
   );
 
-  const propertyLabel = (leaseId: string) => leases.get(leaseId)?.propertyAddress ?? `lease #${leaseId}`;
+  const propertyLabel = (leaseId: string) => properties.get(leaseId) ?? `lease #${leaseId}`;
 
   return items.map((item) => {
     const { category, title, urgent } = describeActivity(item, propertyLabel(item.leaseId));

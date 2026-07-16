@@ -41,9 +41,11 @@ export function disputeTier(raisedAt: number, now = Date.now()): DisputeTier {
 }
 
 export async function getDisputeOverview(params: { email: string; address: Address }): Promise<DisputeOverview> {
+  // true: the "resolved" tab below reads lease.resolvedDisputes, which only
+  // the historical event scan populates.
   const [tenantLeases, landlordLeases] = await Promise.all([
-    listLeasesForTenant(params),
-    listLeasesForLandlord(params),
+    listLeasesForTenant(params, true),
+    listLeasesForLandlord(params, true),
   ]);
 
   const withRole: { lease: Lease; role: "tenant" | "landlord" }[] = [

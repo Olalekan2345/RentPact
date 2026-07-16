@@ -98,7 +98,7 @@ export default function MessageThreadPage() {
   }, [leaseId]);
 
   useEffect(() => {
-    getLease(leaseId).then(setLease);
+    getLease(leaseId, false).then(setLease);
   }, [leaseId]);
 
   useEffect(() => {

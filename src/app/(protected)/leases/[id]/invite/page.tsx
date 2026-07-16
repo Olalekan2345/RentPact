@@ -28,7 +28,7 @@ export default function LeaseInvitePage() {
   const cautionLabel = useCautionFeeLabel();
 
   useEffect(() => {
-    getLease(id).then(setLease);
+    getLease(id, false).then(setLease);
   }, [id]);
 
   if (lease === undefined) return null;

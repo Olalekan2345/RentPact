@@ -22,6 +22,8 @@ import {
   encodeReleaseCaution,
   getResolvedDisputesForLease,
   getCautionClaimHistory,
+  type ResolvedDisputeRecord,
+  type CautionClaimRecord,
   toBaseUnits,
   BPS_DENOMINATOR,
   getReputationStats as getOnChainReputationStats,
@@ -127,11 +129,22 @@ function settlementProposerRole(onChain: {
   return null;
 }
 
-async function onChainLeaseToLease(leaseId: bigint): Promise<Lease> {
+/**
+ * `withHistory` gates two per-lease event-log scans (resolved disputes,
+ * caution claim history) that used to run unconditionally for every lease in
+ * every list — the dominant cost behind a slow dashboard for any user with
+ * real lease history. Everything else (status, amounts, current dispute
+ * state) comes from a single readLease() call regardless, so list views that
+ * never render resolution history (dashboard, wallet, leases list, profile,
+ * public rental history) pass false and skip the scans entirely. Only the
+ * dispute detail page and the disputes overview actually display that
+ * history, so only they pass true.
+ */
+async function onChainLeaseToLease(leaseId: bigint, withHistory: boolean): Promise<Lease> {
   const [onChain, resolvedDisputes, cautionClaim, meta] = await Promise.all([
     readLease(leaseId),
-    getResolvedDisputesForLease(leaseId),
-    getCautionClaimHistory(leaseId),
+    withHistory ? getResolvedDisputesForLease(leaseId) : Promise.resolve<ResolvedDisputeRecord[]>([]),
+    withHistory ? getCautionClaimHistory(leaseId) : Promise.resolve<CautionClaimRecord | null>(null),
     getLeaseMetadata(leaseId.toString()),
   ]);
 
@@ -205,7 +218,9 @@ export async function createLease(input: CreateLeaseInput): Promise<{ lease: Lea
       landlordAddress: input.landlordAddress,
     });
 
-    const lease = await onChainLeaseToLease(leaseId);
+    // false: a lease that was just created cannot possibly have any dispute
+    // or caution-claim history yet.
+    const lease = await onChainLeaseToLease(leaseId, false);
     postSystemMessage({
       leaseId: lease.id,
       fromEmail: lease.tenantEmail,
@@ -244,7 +259,7 @@ export async function signLease(id: string, landlordAddress: Address): Promise<L
         data: encodeSignLease(leaseId),
         description: `signLease(${id})`,
       });
-      return onChainLeaseToLease(leaseId);
+      return onChainLeaseToLease(leaseId, true);
     }
     return mockStore.signLease(id);
   })();
@@ -259,7 +274,7 @@ export async function signLease(id: string, landlordAddress: Address): Promise<L
 }
 
 export async function releaseTranche(id: string, callerAddress: Address): Promise<Lease> {
-  const previous = await getLease(id);
+  const previous = await getLease(id, false);
   const lease = await (async () => {
     if (!MOCK_MODE) {
       if (!escrowAddress) throw new Error("Contract not configured.");
@@ -270,7 +285,7 @@ export async function releaseTranche(id: string, callerAddress: Address): Promis
         data: encodeReleaseTranche(leaseId),
         description: `releaseTranche(${id})`,
       });
-      return onChainLeaseToLease(leaseId);
+      return onChainLeaseToLease(leaseId, true);
     }
     return mockStore.releaseTranche(id);
   })();
@@ -297,7 +312,7 @@ export async function raiseDispute(id: string, reason: string, tenantAddress: Ad
         data: encodeRaiseDispute(leaseId, reason),
         description: `raiseDispute(${id})`,
       });
-      return onChainLeaseToLease(leaseId);
+      return onChainLeaseToLease(leaseId, true);
     }
     return mockStore.raiseDispute(id, reason);
   })();
@@ -334,7 +349,7 @@ export async function resolveDispute(
         data: encodeResolveDispute(leaseId, landlordBps),
         description: `resolveDispute(${id})`,
       });
-      return onChainLeaseToLease(leaseId);
+      return onChainLeaseToLease(leaseId, true);
     }
     return mockStore.resolveDispute(id, landlordBps);
   })();
@@ -366,7 +381,7 @@ export async function proposeSettlement(
         data: encodeProposeSettlement(leaseId, landlordBps),
         description: `proposeSettlement(${id})`,
       });
-      return onChainLeaseToLease(leaseId);
+      return onChainLeaseToLease(leaseId, true);
     }
     return mockStore.proposeSettlement(id, proposerRole, landlordBps);
   })();
@@ -398,7 +413,7 @@ export async function acceptSettlement(
         data: encodeAcceptSettlement(leaseId),
         description: `acceptSettlement(${id})`,
       });
-      return onChainLeaseToLease(leaseId);
+      return onChainLeaseToLease(leaseId, true);
     }
     return mockStore.acceptSettlement(id, acceptorRole);
   })();
@@ -424,7 +439,7 @@ export async function autoResolveOverdueDispute(id: string, callerAddress: Addre
         data: encodeAutoResolveOverdueDispute(leaseId),
         description: `autoResolveOverdueDispute(${id})`,
       });
-      return onChainLeaseToLease(leaseId);
+      return onChainLeaseToLease(leaseId, true);
     }
     return mockStore.autoResolveOverdueDispute(id);
   })();
@@ -459,7 +474,7 @@ export async function fileDepositClaim(
         data: encodeFileDepositClaim(leaseId, claimAmount, evidenceHash),
         description: `fileDepositClaim(${id})`,
       });
-      return onChainLeaseToLease(leaseId);
+      return onChainLeaseToLease(leaseId, true);
     }
     return mockStore.fileDepositClaim(id, claimAmount, evidenceHash);
   })();
@@ -486,7 +501,7 @@ export async function releaseCaution(id: string, callerAddress: Address): Promis
         data: encodeReleaseCaution(leaseId),
         description: `releaseCaution(${id})`,
       });
-      return onChainLeaseToLease(leaseId);
+      return onChainLeaseToLease(leaseId, true);
     }
     return mockStore.releaseCaution(id);
   })();
@@ -500,10 +515,18 @@ export async function releaseCaution(id: string, callerAddress: Address): Promis
   return lease;
 }
 
-export async function getLease(id: string): Promise<Lease | null> {
+/**
+ * `withHistory: true` is required for pages that render dispute-resolution
+ * or caution-claim history (currently only the dispute detail page); every
+ * other view should pass false to skip the per-lease event scans — see
+ * onChainLeaseToLease's docstring.
+ */
+export async function getLease(id: string, withHistory: boolean): Promise<Lease | null> {
   if (!MOCK_MODE) {
     try {
-      return await cachedChainRead(`lease:${id}`, () => onChainLeaseToLease(BigInt(id)));
+      return await cachedChainRead(`lease:${id}:${withHistory ? "full" : "light"}`, () =>
+        onChainLeaseToLease(BigInt(id), withHistory),
+      );
     } catch {
       return null;
     }
@@ -511,22 +534,28 @@ export async function getLease(id: string): Promise<Lease | null> {
   return mockStore.getLease(id);
 }
 
-export async function listLeasesForTenant(params: { email: string; address: Address }): Promise<Lease[]> {
+export async function listLeasesForTenant(
+  params: { email: string; address: Address },
+  withHistory: boolean,
+): Promise<Lease[]> {
   if (!MOCK_MODE) {
-    return cachedChainRead(`leases:tenant:${params.address}`, async () => {
+    return cachedChainRead(`leases:tenant:${params.address}:${withHistory ? "full" : "light"}`, async () => {
       const ids = await findLeaseIdsForAddress(params.address, "tenant");
-      const leases = await Promise.all(ids.map((id) => onChainLeaseToLease(BigInt(id))));
+      const leases = await Promise.all(ids.map((id) => onChainLeaseToLease(BigInt(id), withHistory)));
       return leases.sort((a, b) => b.createdAt - a.createdAt);
     });
   }
   return mockStore.listLeasesForTenant(params.email);
 }
 
-export async function listLeasesForLandlord(params: { email: string; address: Address }): Promise<Lease[]> {
+export async function listLeasesForLandlord(
+  params: { email: string; address: Address },
+  withHistory: boolean,
+): Promise<Lease[]> {
   if (!MOCK_MODE) {
-    return cachedChainRead(`leases:landlord:${params.address}`, async () => {
+    return cachedChainRead(`leases:landlord:${params.address}:${withHistory ? "full" : "light"}`, async () => {
       const ids = await findLeaseIdsForAddress(params.address, "landlord");
-      const leases = await Promise.all(ids.map((id) => onChainLeaseToLease(BigInt(id))));
+      const leases = await Promise.all(ids.map((id) => onChainLeaseToLease(BigInt(id), withHistory)));
       return leases.sort((a, b) => b.createdAt - a.createdAt);
     });
   }
@@ -550,7 +579,8 @@ export interface CautionReturnRate {
  * so the UI can show "no history" instead of a misleading 0%.
  */
 export async function getCautionReturnRate(params: { email: string; address: Address }): Promise<CautionReturnRate | null> {
-  const leases = await listLeasesForLandlord(params);
+  // true: relies on cautionClaimLandlordBps, which only the historical scan populates.
+  const leases = await listLeasesForLandlord(params, true);
   const settled = leases.filter((l) => l.cautionAmount > 0 && l.cautionSettled);
   if (settled.length === 0) return null;
 

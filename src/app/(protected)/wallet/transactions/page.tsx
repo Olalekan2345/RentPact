@@ -100,7 +100,7 @@ export default function TransactionsPage() {
   useEffect(() => {
     if (!session) return;
     getActivityFeed(session, 500).then(setActivity);
-    Promise.all([listLeasesForTenant(session), listLeasesForLandlord(session)]).then(([tenant, landlord]) => {
+    Promise.all([listLeasesForTenant(session, false), listLeasesForLandlord(session, false)]).then(([tenant, landlord]) => {
       setLeases([...tenant, ...landlord]);
     });
     fetch(`/api/wallet-transfers?forEmail=${encodeURIComponent(session.email)}`)

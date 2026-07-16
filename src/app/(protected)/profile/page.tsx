@@ -51,8 +51,8 @@ export default function ProfilePage() {
     fetchProfile(session.email).then(setProfile);
     getReputationStats(session).then(setReputation);
     getCautionReturnRate(session).then(setCautionReturnRate);
-    listLeasesForTenant(session).then(setTenantLeases);
-    listLeasesForLandlord(session).then(setLandlordLeases);
+    listLeasesForTenant(session, false).then(setTenantLeases);
+    listLeasesForLandlord(session, false).then(setLandlordLeases);
     fetchListingsForLandlord(session.email).then(setMyListings);
     fetchReviewsFor(session.email).then(setReviews);
     getTenancyCredentials(session.address).then(setCredentials);
