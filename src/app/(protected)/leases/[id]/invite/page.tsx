@@ -22,6 +22,7 @@ export default function LeaseInvitePage() {
 
   const [lease, setLease] = useState<Lease | null | undefined>(undefined);
   const [signing, setSigning] = useState(false);
+  const [signingLong, setSigningLong] = useState(false);
   const [signed, setSigned] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
   const [acceptedConstitution, setAcceptedConstitution] = useState(false);
@@ -30,6 +31,19 @@ export default function LeaseInvitePage() {
   useEffect(() => {
     getLease(id, false).then(setLease);
   }, [id]);
+
+  // The gasless signature round trip (Circle's PIN challenge, then waiting
+  // for on-chain confirmation) can run long — this keeps the button from
+  // looking frozen by admitting it's still working instead of sitting on a
+  // static "Signing…" the whole time.
+  useEffect(() => {
+    if (!signing) {
+      setSigningLong(false);
+      return;
+    }
+    const t = setTimeout(() => setSigningLong(true), 4000);
+    return () => clearTimeout(t);
+  }, [signing]);
 
   if (lease === undefined) return null;
 
@@ -154,7 +168,13 @@ export default function LeaseInvitePage() {
                   </label>
                   {signError && <p className="text-sm text-terracotta-500">{signError}</p>}
                   <Button size="lg" onClick={handleSign} disabled={signing || !acceptedConstitution}>
-                    {signing ? "Signing…" : signError ? "Try again" : "Sign lease"}
+                    {signing
+                      ? signingLong
+                        ? "Still confirming on-chain…"
+                        : "Signing…"
+                      : signError
+                        ? "Try again"
+                        : "Sign lease"}
                   </Button>
                 </motion.div>
               )}

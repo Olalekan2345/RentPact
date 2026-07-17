@@ -122,6 +122,7 @@ export default function NewListingPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [reviewSettling, setReviewSettling] = useState(false);
 
   useEffect(() => {
     if (!isLoading && !session) router.push("/auth");
@@ -131,6 +132,22 @@ export default function NewListingPage() {
     if (!session) return;
     fetchTemplates(session.email).then(setTemplates);
   }, [session]);
+
+  // The "Publish listing" submit button occupies the same spot the
+  // "Continue" button was just in, so a normal rapid double-click on
+  // Continue — habitual for a lot of people — landed its second click on
+  // Publish before anyone actually saw the review step, publishing instantly.
+  // A brief lock closes that window without adding any friction to a real,
+  // deliberate publish click.
+  useEffect(() => {
+    if (step !== STEPS.length - 1) {
+      setReviewSettling(false);
+      return;
+    }
+    setReviewSettling(true);
+    const t = setTimeout(() => setReviewSettling(false), 600);
+    return () => clearTimeout(t);
+  }, [step]);
 
   const amountNum = Number(amountPerPeriod) || 0;
   const periodsNum = Number(totalPeriods) || 0;
@@ -978,7 +995,7 @@ export default function NewListingPage() {
                 Continue
               </Button>
             ) : (
-              <Button type="submit" size="lg" className="flex-1" disabled={submitting}>
+              <Button type="submit" size="lg" className="flex-1" disabled={submitting || reviewSettling}>
                 {submitting ? "Publishing…" : "Publish listing"}
               </Button>
             )}

@@ -259,7 +259,11 @@ export async function signLease(id: string, landlordAddress: Address): Promise<L
         data: encodeSignLease(leaseId),
         description: `signLease(${id})`,
       });
-      return onChainLeaseToLease(leaseId, true);
+      // false: a lease being signed for the first time was never active
+      // before this moment, so it cannot yet have any dispute or
+      // caution-claim history — skipping those scans here cuts a real
+      // chunk of latency off of every sign action.
+      return onChainLeaseToLease(leaseId, false);
     }
     return mockStore.signLease(id);
   })();
