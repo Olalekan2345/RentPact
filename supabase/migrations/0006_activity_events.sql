@@ -27,3 +27,8 @@ create table activity_events (
 
 create index activity_events_lease_id_idx on activity_events (lease_id);
 create index activity_events_timestamp_idx on activity_events (timestamp desc);
+
+-- Defense-in-depth, same as every other table — primary enforcement is the
+-- API layer (activityEventServer.ts uses the service-role key, which
+-- bypasses RLS regardless).
+alter table activity_events enable row level security;
