@@ -14,10 +14,37 @@
  *
  * Queries run one chunk at a time, deliberately not in parallel — Arc's
  * testnet RPC serves roughly one in-flight request per client, and this
- * only needs to run once so there's no reason to fight that limit.
+ * only needs to run once so there's no reason to fight that limit. Requests
+ * still retry with backoff on "request limit reached" (same as the app's
+ * arcFriendly() transport in rentPactEscrow.ts) since the public RPC can
+ * reject even a single request if something else is using it concurrently
+ * (e.g. a dev server left running).
  */
 import { createClient } from "@supabase/supabase-js";
 import { createPublicClient, http, formatUnits } from "viem";
+
+function retryingHttp(url) {
+  const base = http(url);
+  return (config) => {
+    const transport = base(config);
+    const originalRequest = transport.request.bind(transport);
+    const request = async (params) => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await originalRequest(params);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (attempt < 8 && message.includes("request limit reached")) {
+            await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+            continue;
+          }
+          throw err;
+        }
+      }
+    };
+    return { ...transport, request };
+  };
+}
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -38,7 +65,7 @@ const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession
 
 const publicClient = createPublicClient({
   chain: { id: chainId, name: "arc", nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [rpcUrl] } } },
-  transport: http(rpcUrl),
+  transport: retryingHttp(rpcUrl),
 });
 
 const USDC_DECIMALS = 6;
