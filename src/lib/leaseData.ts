@@ -3,6 +3,7 @@ import type { ReleaseFrequency } from "@/components/escrow";
 import { MOCK_MODE, sendGaslessTransaction } from "@/lib/circle";
 import * as mockStore from "@/lib/leaseStore";
 import { getLeaseMetadata, saveLeaseMetadata, findLeaseIdsForAddress } from "@/lib/leaseMetadataStore";
+import { recordActivityEvent, fetchActivityFeed, type ActivityType as RecordedActivityType } from "@/lib/activityEventStore";
 import { cachedChainRead } from "@/lib/chainCache";
 import {
   readLease,
@@ -27,7 +28,6 @@ import {
   toBaseUnits,
   BPS_DENOMINATOR,
   getReputationStats as getOnChainReputationStats,
-  getActivityFeed as getOnChainActivityFeed,
   getLeaseActivity as getOnChainLeaseActivity,
   type ReputationStats,
   type ActivityItem,
@@ -51,6 +51,24 @@ function recordRuling(lease: Lease, reasoning: string): void {
   recordDisputeRuling({ leaseId: lease.id, resolvedAt, reasoning }).catch((err) =>
     console.error("Could not record dispute ruling:", err),
   );
+}
+
+/**
+ * Fire-and-forget, same principle as recordConstitutionAcceptance — a failed
+ * write here should never block the mutation that already succeeded
+ * on-chain. Only called from the real-mode (!MOCK_MODE) branch of each
+ * mutation below, right after it has a confirmed tx hash. See
+ * supabase/migrations/0006_activity_events.sql for why this table exists.
+ */
+function recordActivity(event: {
+  id: string;
+  leaseId: string;
+  type: RecordedActivityType;
+  timestamp: number;
+  amount: number | null;
+  txHash: string;
+}): void {
+  recordActivityEvent(event).catch((err) => console.error("Could not record activity event:", err));
 }
 
 /**
@@ -221,6 +239,14 @@ export async function createLease(input: CreateLeaseInput): Promise<{ lease: Lea
     // false: a lease that was just created cannot possibly have any dispute
     // or caution-claim history yet.
     const lease = await onChainLeaseToLease(leaseId, false);
+    recordActivity({
+      id: `${hash}-deposit`,
+      leaseId: lease.id,
+      type: "deposit",
+      timestamp: lease.createdAt,
+      amount: input.amountPerPeriod * input.totalPeriods + cautionAmount,
+      txHash: hash,
+    });
     postSystemMessage({
       leaseId: lease.id,
       fromEmail: lease.tenantEmail,
@@ -253,7 +279,7 @@ export async function signLease(id: string, landlordAddress: Address): Promise<L
     if (!MOCK_MODE) {
       if (!escrowAddress) throw new Error("Contract not configured.");
       const leaseId = BigInt(id);
-      await sendGaslessTransaction({
+      const { hash } = await sendGaslessTransaction({
         from: landlordAddress,
         to: escrowAddress,
         data: encodeSignLease(leaseId),
@@ -263,7 +289,16 @@ export async function signLease(id: string, landlordAddress: Address): Promise<L
       // before this moment, so it cannot yet have any dispute or
       // caution-claim history — skipping those scans here cuts a real
       // chunk of latency off of every sign action.
-      return onChainLeaseToLease(leaseId, false);
+      const signed = await onChainLeaseToLease(leaseId, false);
+      recordActivity({
+        id: `${hash}-signed`,
+        leaseId: signed.id,
+        type: "signed",
+        timestamp: signed.signedAt ?? Date.now(),
+        amount: null,
+        txHash: hash,
+      });
+      return signed;
     }
     return mockStore.signLease(id);
   })();
@@ -279,16 +314,18 @@ export async function signLease(id: string, landlordAddress: Address): Promise<L
 
 export async function releaseTranche(id: string, callerAddress: Address): Promise<Lease> {
   const previous = await getLease(id, false);
+  let releaseHash: `0x${string}` | undefined;
   const lease = await (async () => {
     if (!MOCK_MODE) {
       if (!escrowAddress) throw new Error("Contract not configured.");
       const leaseId = BigInt(id);
-      await sendGaslessTransaction({
+      const { hash } = await sendGaslessTransaction({
         from: callerAddress,
         to: escrowAddress,
         data: encodeReleaseTranche(leaseId),
         description: `releaseTranche(${id})`,
       });
+      releaseHash = hash;
       return onChainLeaseToLease(leaseId, true);
     }
     return mockStore.releaseTranche(id);
@@ -296,6 +333,16 @@ export async function releaseTranche(id: string, callerAddress: Address): Promis
 
   const released = lease.periodsReleased - (previous?.periodsReleased ?? 0);
   const amount = released * lease.amountPerPeriod;
+  if (releaseHash) {
+    recordActivity({
+      id: `${releaseHash}-release`,
+      leaseId: lease.id,
+      type: "release",
+      timestamp: Date.now(),
+      amount,
+      txHash: releaseHash,
+    });
+  }
   postSystemMessage({
     leaseId: lease.id,
     fromEmail: lease.tenantEmail,
@@ -310,13 +357,22 @@ export async function raiseDispute(id: string, reason: string, tenantAddress: Ad
     if (!MOCK_MODE) {
       if (!escrowAddress) throw new Error("Contract not configured.");
       const leaseId = BigInt(id);
-      await sendGaslessTransaction({
+      const { hash } = await sendGaslessTransaction({
         from: tenantAddress,
         to: escrowAddress,
         data: encodeRaiseDispute(leaseId, reason),
         description: `raiseDispute(${id})`,
       });
-      return onChainLeaseToLease(leaseId, true);
+      const raised = await onChainLeaseToLease(leaseId, true);
+      recordActivity({
+        id: `${hash}-dispute-raised`,
+        leaseId: raised.id,
+        type: "dispute-raised",
+        timestamp: raised.disputeRaisedAt ?? Date.now(),
+        amount: null,
+        txHash: hash,
+      });
+      return raised;
     }
     return mockStore.raiseDispute(id, reason);
   })();
@@ -336,6 +392,31 @@ function splitSummary(landlordBps: number): string {
   return `the remaining escrow is split ${(landlordBps / 100).toFixed(1)}% landlord / ${(100 - landlordBps / 100).toFixed(1)}% tenant, now`;
 }
 
+/**
+ * Shared by resolveDispute/acceptSettlement/autoResolveOverdueDispute — all
+ * three resolve through the same on-chain path, distinguished only by who
+ * triggers it. `previous` must be fetched *before* the mutation runs, since
+ * disputeIsCautionClaim and cautionClaimedAmount reset once it resolves —
+ * same reasoning as releaseTranche's `previous` snapshot above.
+ */
+function recordDisputeResolution(previous: Lease | null, lease: Lease, hash: `0x${string}`): void {
+  const wasCautionClaim = previous?.disputeIsCautionClaim ?? false;
+  const amount = wasCautionClaim
+    ? (previous?.cautionClaimedAmount ?? null)
+    : previous
+      ? (previous.totalPeriods - previous.periodsReleased) * previous.amountPerPeriod
+      : null;
+
+  recordActivity({
+    id: `${hash}-${wasCautionClaim ? "caution-claim-resolved" : "dispute-resolved"}`,
+    leaseId: lease.id,
+    type: wasCautionClaim ? "caution-claim-resolved" : "dispute-resolved",
+    timestamp: lease.resolvedDisputes.at(-1)?.resolvedAt ?? Date.now(),
+    amount,
+    txHash: hash,
+  });
+}
+
 /** Arbiter-only, ratio resolution — only callable once the 7-day settlement window has closed. */
 export async function resolveDispute(
   id: string,
@@ -343,17 +424,20 @@ export async function resolveDispute(
   arbiterAddress: Address,
   reasoning: string,
 ): Promise<Lease> {
+  const previous = await getLease(id, false);
   const lease = await (async () => {
     if (!MOCK_MODE) {
       if (!escrowAddress) throw new Error("Contract not configured.");
       const leaseId = BigInt(id);
-      await sendGaslessTransaction({
+      const { hash } = await sendGaslessTransaction({
         from: arbiterAddress,
         to: escrowAddress,
         data: encodeResolveDispute(leaseId, landlordBps),
         description: `resolveDispute(${id})`,
       });
-      return onChainLeaseToLease(leaseId, true);
+      const resolved = await onChainLeaseToLease(leaseId, true);
+      recordDisputeResolution(previous, resolved, hash);
+      return resolved;
     }
     return mockStore.resolveDispute(id, landlordBps);
   })();
@@ -407,17 +491,20 @@ export async function acceptSettlement(
   acceptorRole: "tenant" | "landlord",
   acceptorAddress: Address,
 ): Promise<Lease> {
+  const previous = await getLease(id, false);
   const lease = await (async () => {
     if (!MOCK_MODE) {
       if (!escrowAddress) throw new Error("Contract not configured.");
       const leaseId = BigInt(id);
-      await sendGaslessTransaction({
+      const { hash } = await sendGaslessTransaction({
         from: acceptorAddress,
         to: escrowAddress,
         data: encodeAcceptSettlement(leaseId),
         description: `acceptSettlement(${id})`,
       });
-      return onChainLeaseToLease(leaseId, true);
+      const resolved = await onChainLeaseToLease(leaseId, true);
+      recordDisputeResolution(previous, resolved, hash);
+      return resolved;
     }
     return mockStore.acceptSettlement(id, acceptorRole);
   })();
@@ -433,17 +520,20 @@ export async function acceptSettlement(
 
 /** Permissionless — resolves 100% to landlord if the arbiter never rules within the 5-day arbitration window. */
 export async function autoResolveOverdueDispute(id: string, callerAddress: Address): Promise<Lease> {
+  const previous = await getLease(id, false);
   const lease = await (async () => {
     if (!MOCK_MODE) {
       if (!escrowAddress) throw new Error("Contract not configured.");
       const leaseId = BigInt(id);
-      await sendGaslessTransaction({
+      const { hash } = await sendGaslessTransaction({
         from: callerAddress,
         to: escrowAddress,
         data: encodeAutoResolveOverdueDispute(leaseId),
         description: `autoResolveOverdueDispute(${id})`,
       });
-      return onChainLeaseToLease(leaseId, true);
+      const resolved = await onChainLeaseToLease(leaseId, true);
+      recordDisputeResolution(previous, resolved, hash);
+      return resolved;
     }
     return mockStore.autoResolveOverdueDispute(id);
   })();
@@ -472,13 +562,22 @@ export async function fileDepositClaim(
     if (!MOCK_MODE) {
       if (!escrowAddress) throw new Error("Contract not configured.");
       const leaseId = BigInt(id);
-      await sendGaslessTransaction({
+      const { hash } = await sendGaslessTransaction({
         from: landlordAddress,
         to: escrowAddress,
         data: encodeFileDepositClaim(leaseId, claimAmount, evidenceHash),
         description: `fileDepositClaim(${id})`,
       });
-      return onChainLeaseToLease(leaseId, true);
+      const filed = await onChainLeaseToLease(leaseId, true);
+      recordActivity({
+        id: `${hash}-caution-claim-filed`,
+        leaseId: filed.id,
+        type: "caution-claim-filed",
+        timestamp: filed.cautionClaimFiledAt ?? Date.now(),
+        amount: claimAmount,
+        txHash: hash,
+      });
+      return filed;
     }
     return mockStore.fileDepositClaim(id, claimAmount, evidenceHash);
   })();
@@ -499,13 +598,22 @@ export async function releaseCaution(id: string, callerAddress: Address): Promis
     if (!MOCK_MODE) {
       if (!escrowAddress) throw new Error("Contract not configured.");
       const leaseId = BigInt(id);
-      await sendGaslessTransaction({
+      const { hash } = await sendGaslessTransaction({
         from: callerAddress,
         to: escrowAddress,
         data: encodeReleaseCaution(leaseId),
         description: `releaseCaution(${id})`,
       });
-      return onChainLeaseToLease(leaseId, true);
+      const released = await onChainLeaseToLease(leaseId, true);
+      recordActivity({
+        id: `${hash}-caution-released`,
+        leaseId: released.id,
+        type: "caution-released",
+        timestamp: Date.now(),
+        amount: released.cautionAmount,
+        txHash: hash,
+      });
+      return released;
     }
     return mockStore.releaseCaution(id);
   })();
@@ -636,7 +744,7 @@ export async function getReputationStats(params: { email: string; address: Addre
  */
 export async function getActivityFeed(params: { email: string; address: Address }, limit = 12): Promise<ActivityItem[]> {
   if (!MOCK_MODE) {
-    return cachedChainRead(`activity:${params.address}:${limit}`, () => getOnChainActivityFeed(params.address, limit));
+    return cachedChainRead(`activity:${params.address}:${limit}`, () => fetchActivityFeed(params.address, limit));
   }
 
   const tenantLeases = mockStore.listLeasesForTenant(params.email);

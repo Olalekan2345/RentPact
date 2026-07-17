@@ -151,6 +151,15 @@ type WalletTransfersRow = {
   created_at: number;
 };
 
+type ActivityEventsRow = {
+  id: string;
+  lease_id: string;
+  type: string;
+  timestamp: number;
+  amount: number | null;
+  tx_hash: string | null;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -261,6 +270,12 @@ export type Database = {
         Row: LeaseMetadataRow;
         Insert: LeaseMetadataRow;
         Update: Partial<LeaseMetadataRow>;
+        Relationships: [];
+      };
+      activity_events: {
+        Row: ActivityEventsRow;
+        Insert: ActivityEventsRow;
+        Update: Partial<ActivityEventsRow>;
         Relationships: [];
       };
     };
