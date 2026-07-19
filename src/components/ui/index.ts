@@ -5,3 +5,4 @@ export { Badge, type BadgeProps } from "./Badge";
 export { SegmentedControl, type SegmentedControlOption } from "./SegmentedControl";
 export { Skeleton, SkeletonText } from "./Skeleton";
 export { CountUp } from "./CountUp";
+export { ArrowLink } from "./ArrowLink";

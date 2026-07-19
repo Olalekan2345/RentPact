@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import { LeaseCard } from "@/components/LeaseCard";
 import { PropertyImage } from "@/components/PropertyImage";
 import { EmptyState } from "@/components/EmptyState";
-import { Badge, Button, Card, CardContent, CountUp, SkeletonText, Skeleton } from "@/components/ui";
+import { ArrowLink, Badge, Button, Card, CardContent, CountUp, SkeletonText, Skeleton } from "@/components/ui";
 import { CurrencyEquivalent } from "@/components/CurrencyEquivalent";
 import { UsdcAmount } from "@/components/UsdcAmount";
 import { UsdcIcon } from "@/components/icons/UsdcIcon";
@@ -292,18 +292,14 @@ export default function DashboardPage() {
             too meant a second full event-log scan on the app's most-visited
             page, so the dashboard just links to it instead. */}
         <section className="mt-10">
-          <Link href="/wallet/transactions" className="text-sm font-medium text-forest-500 underline">
-            View recent activity and transactions →
-          </Link>
+          <ArrowLink href="/wallet/transactions">View recent activity and transactions</ArrowLink>
         </section>
 
         <section className="mt-12">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-ink">Renting</h2>
             {tenantLeases && tenantLeases.length > 0 && (
-              <Link href="/leases" className="text-sm font-medium text-forest-500 underline">
-                View all leases →
-              </Link>
+              <ArrowLink href="/leases">View all leases</ArrowLink>
             )}
           </div>
           <div className="mt-4">
@@ -333,9 +329,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-ink">Landlording</h2>
             {landlordLeases && landlordLeases.length > 0 && (
-              <Link href="/leases" className="text-sm font-medium text-forest-500 underline">
-                View all leases →
-              </Link>
+              <ArrowLink href="/leases">View all leases</ArrowLink>
             )}
           </div>
           <div className="mt-4">
