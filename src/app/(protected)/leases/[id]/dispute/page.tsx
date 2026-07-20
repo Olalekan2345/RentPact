@@ -23,6 +23,7 @@ import {
   type Lease,
 } from "@/lib/leaseData";
 import { fetchActivityFeedForLease, type ResolutionType } from "@/lib/activityEventStore";
+import { isArbiter } from "@/lib/contracts/rentPactEscrow";
 import { fetchThread, sendTextMessage, type Message } from "@/lib/messages";
 import { fetchListingIdForLease, fetchListing, type Listing } from "@/lib/listings";
 import { fetchDisputeRulingsForLease, type DisputeRulingRecord } from "@/lib/disputeRuling";
@@ -557,6 +558,11 @@ export default function DisputePanelPage() {
               {settlementWindowOpen ? (
                 <p className="mt-4 text-sm text-ink-soft">
                   Arbitration opens once the settlement window closes ({settlementDeadline && formatDate(new Date(settlementDeadline), "long")}).
+                </p>
+              ) : !isArbiter(session.address) ? (
+                <p className="mt-4 text-sm text-ink-soft">
+                  The settlement window has closed — this dispute is now with the arbiter, who will rule on the
+                  evidence timeline above. You&apos;ll be notified when a ruling is recorded.
                 </p>
               ) : (
                 <div className="mt-4">

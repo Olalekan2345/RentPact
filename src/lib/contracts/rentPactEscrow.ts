@@ -69,6 +69,23 @@ export const tenancyCredentialAddress: Address | null =
     ? (envResult.env.NEXT_PUBLIC_TENANCY_CREDENTIAL_ADDRESS as Address)
     : null;
 
+/**
+ * The single address the deployed contract accepts arbiter rulings from
+ * (immutable, set at deploy). Public on-chain anyway. Used only to gate the
+ * dispute page's Tier-2 resolution controls to the arbiter — a party's
+ * resolveDispute call reverts NotArbiter regardless, this just avoids showing
+ * them a button that can't work.
+ */
+export const arbiterAddress: Address | null =
+  envResult.success && envResult.env.NEXT_PUBLIC_ARC_ARBITER_ADDRESS
+    ? (envResult.env.NEXT_PUBLIC_ARC_ARBITER_ADDRESS as Address)
+    : null;
+
+/** Whether the given address is the configured on-chain arbiter (case-insensitive). */
+export function isArbiter(address: string | null | undefined): boolean {
+  return !!address && !!arbiterAddress && address.toLowerCase() === arbiterAddress.toLowerCase();
+}
+
 export function isContractDeployed(): boolean {
   return escrowAddress !== null;
 }
