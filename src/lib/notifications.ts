@@ -77,6 +77,12 @@ function describeActivity(
       return { category: "money", title: `${formatUSDC(item.amount ?? 0)} USDC released for ${property}`, urgent: true };
     case "dispute-raised":
       return { category: "dispute", title: `Dispute raised on ${property}`, urgent: true };
+    case "settlement-proposed":
+      return {
+        category: "dispute",
+        title: `Settlement proposed on ${property} — review and respond before the window closes`,
+        urgent: true,
+      };
     case "dispute-resolved": {
       const refunded = item.amount ?? 0;
       const text = refunded > 0 ? `Dispute resolved — ${formatUSDC(refunded)} USDC refunded to the tenant` : `Dispute resolved — funds released to the landlord`;

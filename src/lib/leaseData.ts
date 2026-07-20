@@ -478,13 +478,23 @@ export async function proposeSettlement(
     if (!MOCK_MODE) {
       if (!escrowAddress) throw new Error("Contract not configured.");
       const leaseId = BigInt(id);
-      await sendGaslessTransaction({
+      const { hash } = await sendGaslessTransaction({
         from: proposerAddress,
         to: escrowAddress,
         data: encodeProposeSettlement(leaseId, landlordBps),
         description: `proposeSettlement(${id})`,
       });
-      return onChainLeaseToLease(leaseId, true);
+      const proposed = await onChainLeaseToLease(leaseId, false);
+      recordActivity({
+        id: `${hash}-settlement-proposed`,
+        leaseId: proposed.id,
+        type: "settlement-proposed",
+        timestamp: Date.now(),
+        amount: null,
+        txHash: hash,
+        landlordBps,
+      });
+      return proposed;
     }
     return mockStore.proposeSettlement(id, proposerRole, landlordBps);
   })();

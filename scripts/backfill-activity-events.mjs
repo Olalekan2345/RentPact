@@ -115,6 +115,15 @@ const EVENT_ABIS = {
       { indexed: false, name: "reason", type: "string" },
     ],
   },
+  SettlementProposed: {
+    type: "event",
+    name: "SettlementProposed",
+    inputs: [
+      { indexed: true, name: "leaseId", type: "uint256" },
+      { indexed: true, name: "proposer", type: "address" },
+      { indexed: false, name: "landlordBps", type: "uint16" },
+    ],
+  },
   DisputeResolved: {
     type: "event",
     name: "DisputeResolved",
@@ -220,6 +229,11 @@ async function main() {
   console.log("Scanning DisputeRaised…");
   for (const log of await scanAllLogs("DisputeRaised")) {
     rows.push(await toActivityRow(log, "dispute-raised", null));
+  }
+
+  console.log("Scanning SettlementProposed…");
+  for (const log of await scanAllLogs("SettlementProposed")) {
+    rows.push(await toActivityRow(log, "settlement-proposed", null, { landlord_bps: Number(log.args.landlordBps) }));
   }
 
   console.log("Scanning DisputeResolved…");

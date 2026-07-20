@@ -54,6 +54,7 @@ const ACTIVITY_LABEL: Record<ActivityItem["type"], string> = {
   signed: "Lease signed",
   release: "Tranche released",
   "dispute-raised": "Dispute raised",
+  "settlement-proposed": "Settlement proposed",
   "dispute-resolved": "Dispute resolved",
   cancelled: "Lease cancelled",
   "caution-claim-filed": "Caution fee claim filed",

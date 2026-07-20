@@ -521,6 +521,7 @@ export type ActivityType =
   | "signed"
   | "release"
   | "dispute-raised"
+  | "settlement-proposed"
   | "dispute-resolved"
   | "cancelled"
   | "caution-claim-filed"
