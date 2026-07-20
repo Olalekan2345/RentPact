@@ -16,6 +16,9 @@ import {
   resolveDispute,
   proposeSettlement,
   acceptSettlement,
+  offerRepairCredit,
+  acceptRepairCredit,
+  withdrawRepairCredit,
   autoResolveOverdueDispute,
   type Lease,
 } from "@/lib/leaseData";
@@ -62,6 +65,8 @@ export default function DisputePanelPage() {
   const [statement, setStatement] = useState("");
   const [statementSent, setStatementSent] = useState(false);
   const [constitutionOpen, setConstitutionOpen] = useState(false);
+  const [repairCreditInput, setRepairCreditInput] = useState("");
+  const [repairCreditError, setRepairCreditError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     // false: this page no longer needs the historical dispute/caution-claim
@@ -187,6 +192,48 @@ export default function DisputePanelPage() {
       await resolveDispute(lease.id, landlordBps, session.address, text);
       setReasoning("");
       refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleOfferRepairCredit = async () => {
+    const amount = Number(repairCreditInput);
+    if (!amount || amount <= 0) return;
+    setBusy(true);
+    setRepairCreditError(null);
+    try {
+      await offerRepairCredit(lease.id, amount, session.address);
+      setRepairCreditInput("");
+      refresh();
+    } catch (err) {
+      setRepairCreditError(err instanceof Error ? err.message : "Could not offer the repair credit. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleAcceptRepairCredit = async () => {
+    setBusy(true);
+    setRepairCreditError(null);
+    try {
+      await acceptRepairCredit(lease.id, session.address);
+      refresh();
+    } catch (err) {
+      setRepairCreditError(err instanceof Error ? err.message : "Could not accept the repair credit. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleWithdrawRepairCredit = async () => {
+    setBusy(true);
+    setRepairCreditError(null);
+    try {
+      await withdrawRepairCredit(lease.id, session.address);
+      refresh();
+    } catch (err) {
+      setRepairCreditError(err instanceof Error ? err.message : "Could not withdraw the repair credit. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -397,6 +444,72 @@ export default function DisputePanelPage() {
               ) : (
                 <p className="mt-3 text-sm text-ink-soft">Only the tenant or landlord on this lease can propose a settlement.</p>
               )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Repair credit — Article 4.6. Alternative Tier 1 remedy that keeps the lease running. */}
+        {lease.disputeActive && settlementWindowOpen && !lease.disputeIsCautionClaim && role && (
+          <Card className="mt-6">
+            <CardContent className="pt-6">
+              <p className="text-sm font-semibold text-ink">Repair credit — resolve and keep the lease running</p>
+              <blockquote className="mt-2 border-l-2 border-forest-200 pl-3 text-xs italic text-ink-soft">
+                &ldquo;The landlord may offer the tenant a fixed repair credit... paid from the landlord&apos;s own
+                funds, never from escrow... the lease resumes on its normal release schedule.&rdquo; — Article 4.6
+              </blockquote>
+
+              {lease.repairCreditHeld > 0 ? (
+                <div className="mt-4 rounded-lg bg-forest-50 p-4">
+                  <p className="text-sm text-ink">
+                    Landlord offered a repair credit of{" "}
+                    <span className="font-semibold">{formatUSDC(lease.repairCreditHeld)} USDC</span>, held by the
+                    contract. Accepting pays it to the tenant, clears the dispute, and resumes the lease — the escrow
+                    and release schedule are untouched.
+                  </p>
+                  {role === "tenant" && (
+                    <Button className="mt-3" onClick={handleAcceptRepairCredit} disabled={busy}>
+                      Accept credit &amp; resume lease
+                    </Button>
+                  )}
+                  {role === "landlord" && (
+                    <Button className="mt-3" variant="secondary" onClick={handleWithdrawRepairCredit} disabled={busy}>
+                      Withdraw offer
+                    </Button>
+                  )}
+                </div>
+              ) : role === "landlord" ? (
+                <div className="mt-4">
+                  <label className="text-sm text-ink-muted">Credit to pay the tenant (USDC)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="e.g. 120.00"
+                    value={repairCreditInput}
+                    onChange={(e) => setRepairCreditInput(e.target.value)}
+                    className="mt-2 h-11 w-full rounded-md border border-forest-100 bg-cream-50 px-4 text-[15px] text-ink focus:border-forest-400 focus:outline-none focus:ring-2 focus:ring-forest-100"
+                  />
+                  <p className="mt-1.5 text-xs text-ink-soft">
+                    Paid from your own wallet (not escrow), and held by the contract until the tenant accepts. You can
+                    withdraw it if they don&apos;t.
+                  </p>
+                  <Button
+                    className="mt-3"
+                    variant="secondary"
+                    onClick={handleOfferRepairCredit}
+                    disabled={busy || !repairCreditInput || Number(repairCreditInput) <= 0}
+                  >
+                    Offer repair credit
+                  </Button>
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-ink-soft">
+                  The landlord can offer you a repair credit here — a direct payment that resolves this dispute and
+                  keeps the lease going on its normal schedule.
+                </p>
+              )}
+
+              {repairCreditError && <p className="mt-3 text-sm text-terracotta-500">{repairCreditError}</p>}
             </CardContent>
           </Card>
         )}

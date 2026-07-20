@@ -13,6 +13,8 @@ const VALID_TYPES: ActivityType[] = [
   "release",
   "dispute-raised",
   "settlement-proposed",
+  "repair-credit-offered",
+  "repair-credit-accepted",
   "dispute-resolved",
   "caution-claim-filed",
   "caution-released",

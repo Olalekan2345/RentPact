@@ -12,7 +12,7 @@ import crypto from "crypto";
  * moves the caution fee into that same contract escrow (Article 6.5–6.7).
  */
 
-export const CONSTITUTION_VERSION = "1.2";
+export const CONSTITUTION_VERSION = "1.3";
 
 const FILE_PATH = path.join(process.cwd(), "public", "legal", "constitution-v1.md");
 

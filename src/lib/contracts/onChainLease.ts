@@ -102,6 +102,22 @@ export function encodeAcceptSettlement(leaseId: bigint): Hex {
   return encodeFunctionData({ abi: rentPactEscrowAbi, functionName: "acceptSettlement", args: [leaseId] });
 }
 
+export function encodeOfferRepairCredit(leaseId: bigint, creditAmount: number): Hex {
+  return encodeFunctionData({
+    abi: rentPactEscrowAbi,
+    functionName: "offerRepairCredit",
+    args: [leaseId, toBaseUnits(creditAmount)],
+  });
+}
+
+export function encodeAcceptRepairCredit(leaseId: bigint): Hex {
+  return encodeFunctionData({ abi: rentPactEscrowAbi, functionName: "acceptRepairCredit", args: [leaseId] });
+}
+
+export function encodeWithdrawRepairCredit(leaseId: bigint): Hex {
+  return encodeFunctionData({ abi: rentPactEscrowAbi, functionName: "withdrawRepairCredit", args: [leaseId] });
+}
+
 export function encodeAutoResolveOverdueDispute(leaseId: bigint): Hex {
   return encodeFunctionData({
     abi: rentPactEscrowAbi,
@@ -171,6 +187,8 @@ export interface OnChainLease {
   disputeReason: string | null;
   settlementProposedBps: number | null;
   settlementProposer: Address | null;
+  /** Repair credit (Article 4.6) the landlord has offered and this contract is holding, awaiting the tenant's acceptance. 0 = none open. */
+  repairCreditHeld: number;
   /** 0 means this lease has no caution fee. */
   cautionAmount: number;
   /** null until the lease has released all rent tranches (or a rent dispute concludes it). Anchors the 7-day claim window. */
@@ -211,6 +229,7 @@ export async function readLease(leaseId: bigint): Promise<OnChainLease> {
       lease.disputeActive && lease.settlementProposer !== ZERO_ADDRESS ? lease.settlementProposedBps : null,
     settlementProposer:
       lease.disputeActive && lease.settlementProposer !== ZERO_ADDRESS ? lease.settlementProposer : null,
+    repairCreditHeld: lease.disputeActive ? fromBaseUnits(lease.repairCreditHeld) : 0,
     cautionAmount: fromBaseUnits(lease.cautionAmount),
     completedAt: lease.completedAt > 0n ? Number(lease.completedAt) * 1000 : null,
     cautionClaimedAmount: lease.cautionClaimFiledAt > 0n ? fromBaseUnits(lease.cautionClaimedAmount) : null,
@@ -522,6 +541,8 @@ export type ActivityType =
   | "release"
   | "dispute-raised"
   | "settlement-proposed"
+  | "repair-credit-offered"
+  | "repair-credit-accepted"
   | "dispute-resolved"
   | "cancelled"
   | "caution-claim-filed"

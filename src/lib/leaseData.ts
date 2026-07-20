@@ -23,6 +23,9 @@ import {
   encodeResolveDispute,
   encodeProposeSettlement,
   encodeAcceptSettlement,
+  encodeOfferRepairCredit,
+  encodeAcceptRepairCredit,
+  encodeWithdrawRepairCredit,
   encodeAutoResolveOverdueDispute,
   encodeFileDepositClaim,
   encodeReleaseCaution,
@@ -192,6 +195,7 @@ async function onChainLeaseToLease(leaseId: bigint, withHistory: boolean): Promi
     cancelled: onChain.cancelled,
     settlementProposedBps: onChain.settlementProposedBps,
     settlementProposer: settlementProposerRole(onChain),
+    repairCreditHeld: onChain.repairCreditHeld,
     disputeIsCautionClaim: onChain.disputeIsCautionClaim,
     resolvedDisputes,
     cautionAmount: onChain.cautionAmount,
@@ -541,6 +545,110 @@ export async function acceptSettlement(
     text: `Settlement accepted — dispute resolved without arbitration.`,
   });
   return lease;
+}
+
+/**
+ * Repair-credit remedy (Article 4.6) — the landlord offers the tenant a fixed
+ * credit from their own wallet to resolve a rent dispute WITHOUT dividing
+ * escrow, so the lease continues on its normal schedule. Requires a USDC
+ * approval from the landlord first (the same approve-then-act pattern a
+ * tenant's deposit uses); the contract then pulls and holds the credit until
+ * the tenant accepts it.
+ */
+export async function offerRepairCredit(id: string, creditAmount: number, landlordAddress: Address): Promise<Lease> {
+  const lease = await (async () => {
+    if (!MOCK_MODE) {
+      if (!escrowAddress || !usdcAddress) throw new Error("Contract or USDC address not configured.");
+      const leaseId = BigInt(id);
+      const required = toBaseUnits(creditAmount);
+      const allowance = await readAllowance(landlordAddress);
+      if (allowance < required) {
+        await sendGaslessTransaction({
+          from: landlordAddress,
+          to: usdcAddress,
+          data: encodeApprove(escrowAddress, required),
+          description: "approve USDC for RentPactEscrow (repair credit)",
+        });
+      }
+      const { hash } = await sendGaslessTransaction({
+        from: landlordAddress,
+        to: escrowAddress,
+        data: encodeOfferRepairCredit(leaseId, creditAmount),
+        description: `offerRepairCredit(${id})`,
+      });
+      const offered = await onChainLeaseToLease(leaseId, false);
+      recordActivity({
+        id: `${hash}-repair-credit-offered`,
+        leaseId: offered.id,
+        type: "repair-credit-offered",
+        timestamp: Date.now(),
+        amount: creditAmount,
+        txHash: hash,
+      });
+      return offered;
+    }
+    return mockStore.offerRepairCredit(id, creditAmount);
+  })();
+
+  postSystemMessage({
+    leaseId: lease.id,
+    fromEmail: lease.landlordEmail,
+    toEmail: lease.tenantEmail,
+    text: `Repair credit offered — ${creditAmount.toFixed(2)} USDC to resolve the dispute and resume the lease on its normal schedule.`,
+  });
+  return lease;
+}
+
+/** The tenant accepts the landlord's held repair credit — credit pays out, dispute clears, schedule resumes untouched. */
+export async function acceptRepairCredit(id: string, tenantAddress: Address): Promise<Lease> {
+  const previous = await getLease(id, false);
+  const lease = await (async () => {
+    if (!MOCK_MODE) {
+      if (!escrowAddress) throw new Error("Contract not configured.");
+      const leaseId = BigInt(id);
+      const { hash } = await sendGaslessTransaction({
+        from: tenantAddress,
+        to: escrowAddress,
+        data: encodeAcceptRepairCredit(leaseId),
+        description: `acceptRepairCredit(${id})`,
+      });
+      const resumed = await onChainLeaseToLease(leaseId, false);
+      recordActivity({
+        id: `${hash}-repair-credit-accepted`,
+        leaseId: resumed.id,
+        type: "repair-credit-accepted",
+        timestamp: Date.now(),
+        amount: previous?.repairCreditHeld ?? null,
+        txHash: hash,
+      });
+      return resumed;
+    }
+    return mockStore.acceptRepairCredit(id);
+  })();
+
+  postSystemMessage({
+    leaseId: lease.id,
+    fromEmail: lease.tenantEmail,
+    toEmail: lease.landlordEmail,
+    text: `Repair credit accepted — dispute resolved, the lease resumes on its normal schedule.`,
+  });
+  return lease;
+}
+
+/** The landlord reclaims a repair credit the tenant never accepted. */
+export async function withdrawRepairCredit(id: string, landlordAddress: Address): Promise<Lease> {
+  if (!MOCK_MODE) {
+    if (!escrowAddress) throw new Error("Contract not configured.");
+    const leaseId = BigInt(id);
+    await sendGaslessTransaction({
+      from: landlordAddress,
+      to: escrowAddress,
+      data: encodeWithdrawRepairCredit(leaseId),
+      description: `withdrawRepairCredit(${id})`,
+    });
+    return onChainLeaseToLease(leaseId, false);
+  }
+  return mockStore.withdrawRepairCredit(id);
 }
 
 /** Permissionless — resolves 100% to landlord if the arbiter never rules within the 5-day arbitration window. */

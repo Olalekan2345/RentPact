@@ -55,6 +55,8 @@ const ACTIVITY_LABEL: Record<ActivityItem["type"], string> = {
   release: "Tranche released",
   "dispute-raised": "Dispute raised",
   "settlement-proposed": "Settlement proposed",
+  "repair-credit-offered": "Repair credit offered",
+  "repair-credit-accepted": "Repair credit accepted",
   "dispute-resolved": "Dispute resolved",
   cancelled: "Lease cancelled",
   "caution-claim-filed": "Caution fee claim filed",

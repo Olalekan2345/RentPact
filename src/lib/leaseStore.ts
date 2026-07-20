@@ -40,6 +40,8 @@ export interface Lease {
   /** bps out of 10_000 a party has proposed the landlord keep; null if no open proposal. */
   settlementProposedBps: number | null;
   settlementProposer: "tenant" | "landlord" | null;
+  /** Repair credit (Article 4.6) the landlord has offered and the contract is holding, awaiting tenant acceptance; 0 = none open. */
+  repairCreditHeld: number;
   disputeIsCautionClaim: boolean;
   /** History of resolved disputes on this lease — powers reputation scoring. */
   resolvedDisputes: { raisedAt: number; resolvedAt: number; landlordBps: number; resolutionType: ResolutionType }[];
@@ -139,6 +141,7 @@ export function createLease(input: CreateLeaseInput): Lease {
     cancelled: false,
     settlementProposedBps: null,
     settlementProposer: null,
+    repairCreditHeld: 0,
     disputeIsCautionClaim: false,
     resolvedDisputes: [],
     cautionAmount: input.cautionAmount ?? 0,
@@ -196,6 +199,7 @@ export function raiseDispute(id: string, reason: string): Lease {
       disputeReason: reason,
       settlementProposedBps: null,
       settlementProposer: null,
+      repairCreditHeld: 0,
       disputeIsCautionClaim: false,
     };
   });
@@ -221,6 +225,35 @@ export function acceptSettlement(id: string, acceptor: "tenant" | "landlord"): L
     if (lease.settlementProposer === acceptor) throw new Error("Cannot accept your own proposal");
     if (Date.now() > lease.disputeRaisedAt! + SETTLEMENT_WINDOW_MS) throw new Error("Settlement window has closed");
     return finalizeDispute(lease, lease.settlementProposedBps, "settlement");
+  });
+}
+
+/** Landlord offers a repair credit — Article 4.6. Resolves the dispute without touching escrow. */
+export function offerRepairCredit(id: string, creditAmount: number): Lease {
+  return updateLease(id, (lease) => {
+    if (!lease.disputeActive) throw new Error("No active dispute");
+    if (lease.disputeIsCautionClaim) throw new Error("Repair credit isn't available on a caution claim");
+    if (creditAmount <= 0) throw new Error("Invalid credit amount");
+    if (Date.now() > lease.disputeRaisedAt! + SETTLEMENT_WINDOW_MS) throw new Error("Settlement window has closed");
+    return { ...lease, repairCreditHeld: creditAmount };
+  });
+}
+
+/** Tenant accepts the landlord's repair credit — dispute clears, schedule resumes untouched. */
+export function acceptRepairCredit(id: string): Lease {
+  return updateLease(id, (lease) => {
+    if (!lease.disputeActive) throw new Error("No active dispute");
+    if (lease.repairCreditHeld <= 0) throw new Error("No repair credit offered");
+    if (Date.now() > lease.disputeRaisedAt! + SETTLEMENT_WINDOW_MS) throw new Error("Settlement window has closed");
+    return { ...lease, disputeActive: false, repairCreditHeld: 0, settlementProposedBps: null, settlementProposer: null };
+  });
+}
+
+/** Landlord reclaims a repair credit the tenant never accepted. */
+export function withdrawRepairCredit(id: string): Lease {
+  return updateLease(id, (lease) => {
+    if (lease.repairCreditHeld <= 0) throw new Error("No repair credit offered");
+    return { ...lease, repairCreditHeld: 0 };
   });
 }
 
@@ -263,6 +296,7 @@ function finalizeDispute(lease: Lease, landlordBps: number, resolutionType: Reso
     disputeActive: false,
     settlementProposedBps: null,
     settlementProposer: null,
+    repairCreditHeld: 0,
   };
 
   if (lease.disputeIsCautionClaim) {

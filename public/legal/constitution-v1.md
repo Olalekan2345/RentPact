@@ -85,9 +85,11 @@ The guiding principle of every rule in this document: **evidence decides, not ar
 
 **4.5** Arbiters are bound by this Constitution. They interpret its rules against the evidence; they may not introduce standards outside it. Where this Constitution is silent, arbiters rule according to what the evidence shows a reasonable and honest landlord and tenant would have expected at signing.
 
-**4.6** An AI assistant may prepare evidence summaries, applicable-rule checklists, and draft recommendations for the panel. **No dispute is ever decided by AI alone.** Every ruling carries the signatures of human arbiters.
+**4.6** **Repair Credit (Tier 1).** As an alternative to splitting escrow, at any point while the 7-day settlement window is open the landlord may offer the tenant a fixed repair credit — for example, to reimburse a repair the tenant arranged themselves. The credit is paid from the landlord's own funds, never from escrow. When offered, the credit is transferred into the escrow contract and held; the tenant's acceptance releases it to the tenant, clears the dispute, and resumes the lease on its normal release schedule with no change to the remaining escrow or the release count. Because acceptance and payment occur in a single on-chain transaction, neither party can accept without the other being paid, and neither can be paid without the dispute clearing. A credit the tenant does not accept may be withdrawn by the landlord, and is returned to the landlord automatically if the dispute instead resolves through settlement, arbitration, or the ruling-deadline fallback. A dispute resolved by an accepted repair credit records no fault against either party. Repair credit is not available for caution-fee claim disputes (Article 6.7), which concern a one-time deposit rather than an ongoing release schedule.
 
-**4.7** Settlement acceptances and arbitration rulings execute automatically on-chain and are final within RentPact. Nothing in this Constitution prevents either party from pursuing remedies under applicable law outside the platform.
+**4.7** An AI assistant may prepare evidence summaries, applicable-rule checklists, and draft recommendations for the panel. **No dispute is ever decided by AI alone.** Every ruling carries the signatures of human arbiters.
+
+**4.8** Settlement acceptances and arbitration rulings execute automatically on-chain and are final within RentPact. Nothing in this Constitution prevents either party from pursuing remedies under applicable law outside the platform.
 
 **4.8** After a dispute is resolved, the lease schedule resumes. Raising three disputes ruled invalid or frivolous within a single lease permanently disables the dispute function for that lease and is recorded under Article VII.
 
@@ -139,7 +141,7 @@ The guiding principle of every rule in this document: **evidence decides, not ar
 
 **8.3** If the platform interface becomes unavailable, escrowed funds remain safe and withdrawable according to the smart contract's rules, which mirror this Constitution wherever the contract has been extended to enforce them. The contract, not the website, is the source of truth for whatever it directly controls.
 
-**8.4** This version of the Constitution is deployed alongside a smart contract that enforces Articles I–IV and VI as written, including the ratio-split settlement and arbitration of 4.3–4.4, the ruling-deadline fallback of 4.4, and the caution fee escrow, auto-release, and partial-return rules of 6.5–6.7. One piece of 6.6 remains application-layer, not contract-enforced, and is disclosed here the same way Tier 0's disclosure-shield and matrix checks are elsewhere in this Constitution: the contract verifies a claim carries evidence and does not exceed the caution fee, but whether that evidence is genuinely itemized (as 6.6 requires) is validated at the platform layer before the claim reaches the contract.
+**8.4** This version of the Constitution is deployed alongside a smart contract that enforces Articles I–IV and VI as written, including the ratio-split settlement and arbitration of 4.3–4.4, the repair-credit remedy of 4.6, the ruling-deadline fallback of 4.4, and the caution fee escrow, auto-release, and partial-return rules of 6.5–6.7. One piece of 6.6 remains application-layer, not contract-enforced, and is disclosed here the same way Tier 0's disclosure-shield and matrix checks are elsewhere in this Constitution: the contract verifies a claim carries evidence and does not exceed the caution fee, but whether that evidence is genuinely itemized (as 6.6 requires) is validated at the platform layer before the claim reaches the contract.
 
 **8.5** This Constitution's hash is recorded immutably by the smart contract at deployment (not per-lease); every lease created under a given deployment shares that deployment's hash and version. A new Constitution version is published only alongside a new contract deployment, consistent with 8.2 — existing leases continue under the version and contract they were created on.
 
@@ -153,7 +155,8 @@ By signing a RentPact lease, both parties confirm they have read this Constituti
 
 ---
 
-*Constitution Version 1.2 — hash recorded immutably in the RentPactEscrow contract at deployment. RentPact is built on Arc and powered by Circle. Escrow in USDC.*
+*Constitution Version 1.3 — hash recorded immutably in the RentPactEscrow contract at deployment. RentPact is built on Arc and powered by Circle. Escrow in USDC.*
 
+*v1.3 — Added the repair-credit remedy: a landlord-funded credit that resolves a dispute without dividing escrow, so the lease continues on its normal schedule (Article 4.6).*
 *v1.2 — Added caution fee guarantee, itemized claims requirement, and partial return rule (clauses 1.6, 6.5–6.7).*
 *v1.1 — Added ratio-split settlement and arbitration, the arbitration ruling-deadline fallback, and on-chain constitutionHash (Article 4.3–4.4, 8.5).*

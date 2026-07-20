@@ -83,6 +83,18 @@ function describeActivity(
         title: `Settlement proposed on ${property} — review and respond before the window closes`,
         urgent: true,
       };
+    case "repair-credit-offered":
+      return {
+        category: "dispute",
+        title: `Repair credit offered on ${property} — accept it to get paid and resume the lease`,
+        urgent: true,
+      };
+    case "repair-credit-accepted":
+      return {
+        category: "money",
+        title: `Repair credit accepted on ${property} — the lease resumes on its normal schedule`,
+        urgent: false,
+      };
     case "dispute-resolved": {
       const refunded = item.amount ?? 0;
       const text = refunded > 0 ? `Dispute resolved — ${formatUSDC(refunded)} USDC refunded to the tenant` : `Dispute resolved — funds released to the landlord`;
