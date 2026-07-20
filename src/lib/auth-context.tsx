@@ -13,6 +13,14 @@ interface Session {
 interface AuthContextValue {
   session: Session | null;
   isLoading: boolean;
+  /**
+   * True while a first-time wallet is being provisioned with Circle (a signed-in
+   * user with no cached wallet yet). This is the slow one-time step — creating
+   * an on-chain smart-contract wallet — so the UI can show a "setting up your
+   * wallet" state instead of dead air. Returning users (cached wallet) never
+   * enter this state; their refresh happens silently in the background.
+   */
+  isProvisioningWallet: boolean;
   /** Set if Supabase auth succeeded but Circle wallet provisioning failed. */
   sessionError: string | null;
   signOut: () => Promise<void>;
@@ -50,6 +58,7 @@ function writeWalletCache(session: Session) {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isProvisioningWallet, setIsProvisioningWallet] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
   /**
    * Email currently (or already) provisioned. onAuthStateChange fires for
@@ -74,6 +83,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (hasCache) {
         setSession(cached);
         setIsLoading(false);
+      } else {
+        // No cache: this is a first-time provision (or first time on this
+        // device) — the slow, on-chain wallet-creation path. Signal it so the
+        // UI can explain the wait instead of showing nothing.
+        setIsProvisioningWallet(true);
       }
 
       try {
@@ -94,7 +108,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // With a cached wallet, stay signed in silently — the Circle session
         // refresh will be retried when a transaction actually needs it.
       } finally {
-        if (!cancelled) setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+          setIsProvisioningWallet(false);
+        }
       }
     }
 
@@ -139,7 +156,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ session, isLoading, sessionError, signOut }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ session, isLoading, isProvisioningWallet, sessionError, signOut }}>
+      {children}
+    </AuthContext.Provider>
   );
 }
 

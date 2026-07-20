@@ -4,6 +4,7 @@ import "./globals.css";
 import { envResult } from "@/lib/env";
 import { ConfigError } from "@/components/ConfigError";
 import { AuthProvider } from "@/lib/auth-context";
+import { WalletProvisioningOverlay } from "@/components/WalletProvisioningOverlay";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -49,7 +50,14 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${fraunces.variable} ${dmSans.variable}`}>
       <body className="bg-cream font-sans text-ink antialiased">
-        {envResult.success ? <AuthProvider>{children}</AuthProvider> : <ConfigError result={envResult} />}
+        {envResult.success ? (
+          <AuthProvider>
+            {children}
+            <WalletProvisioningOverlay />
+          </AuthProvider>
+        ) : (
+          <ConfigError result={envResult} />
+        )}
       </body>
     </html>
   );
