@@ -404,6 +404,260 @@ describe("RentPactEscrow", () => {
     });
   });
 
+  describe("disputes — repair credit (Article 4.6)", () => {
+    async function fundLandlord(fixture: Awaited<ReturnType<typeof deployFixture>>) {
+      const { usdc, landlord, escrow } = fixture;
+      await usdc.mint(landlord.address, USDC(10_000));
+      await usdc.connect(landlord).approve(await escrow.getAddress(), ethers.MaxUint256);
+    }
+
+    async function disputedLease(fixture: Awaited<ReturnType<typeof deployFixture>>) {
+      const amountPerPeriod = USDC(400);
+      const periods = 6;
+      const leaseId = await createSignedLease(fixture, amountPerPeriod, periods, Frequency.Monthly);
+      await time.increase(INTERVAL_SECONDS[Frequency.Monthly]);
+      await fixture.escrow.releaseTranche(leaseId); // 1 released, 5 remaining
+      await fixture.escrow.connect(fixture.tenant).raiseDispute(leaseId, "Broken AC — I paid to fix it");
+      return { leaseId, amountPerPeriod, periods };
+    }
+
+    it("landlord offers, tenant accepts: credit paid, dispute clears, schedule resumes untouched", async () => {
+      const fixture = await loadFixture(deployFixture);
+      const { escrow, usdc, tenant, landlord } = fixture;
+      await fundLandlord(fixture);
+      const { leaseId } = await disputedLease(fixture);
+      const credit = USDC(150);
+
+      const escrowAddr = await escrow.getAddress();
+      const landlordBefore = await usdc.balanceOf(landlord.address);
+      const contractBefore = await usdc.balanceOf(escrowAddr);
+
+      await expect(escrow.connect(landlord).offerRepairCredit(leaseId, credit))
+        .to.emit(escrow, "RepairCreditOffered")
+        .withArgs(leaseId, credit);
+
+      // Funds moved from the landlord into the contract, held.
+      expect(landlordBefore - (await usdc.balanceOf(landlord.address))).to.equal(credit);
+      expect((await usdc.balanceOf(escrowAddr)) - contractBefore).to.equal(credit);
+      expect((await escrow.getLease(leaseId)).repairCreditHeld).to.equal(credit);
+
+      const tenantBefore = await usdc.balanceOf(tenant.address);
+
+      await expect(escrow.connect(tenant).acceptRepairCredit(leaseId))
+        .to.emit(escrow, "RepairCreditAccepted")
+        .withArgs(leaseId, credit);
+
+      // Credit reached the tenant; escrow accounting untouched.
+      expect((await usdc.balanceOf(tenant.address)) - tenantBefore).to.equal(credit);
+      const lease = await escrow.getLease(leaseId);
+      expect(lease.disputeActive).to.equal(false);
+      expect(lease.repairCreditHeld).to.equal(0n);
+      expect(lease.periodsReleased).to.equal(1n); // never advanced by the credit
+
+      // Schedule resumes: the next tranche releases normally.
+      await time.increase(INTERVAL_SECONDS[Frequency.Monthly]);
+      await expect(escrow.releaseTranche(leaseId)).to.emit(escrow, "TrancheReleased");
+      expect((await escrow.getLease(leaseId)).periodsReleased).to.equal(2n);
+    });
+
+    it("lets the lease complete naturally (and mint a credential) after a repair credit", async () => {
+      const fixture = await loadFixture(deployFixture);
+      const { escrow, tenant, landlord, credential } = fixture;
+      await fundLandlord(fixture);
+      const { leaseId, periods } = await disputedLease(fixture);
+
+      await escrow.connect(landlord).offerRepairCredit(leaseId, USDC(150));
+      await escrow.connect(tenant).acceptRepairCredit(leaseId);
+
+      // Release the remaining periods to natural completion.
+      for (let i = 1; i < periods; i++) {
+        await time.increase(INTERVAL_SECONDS[Frequency.Monthly]);
+        await escrow.releaseTranche(leaseId);
+      }
+
+      const lease = await escrow.getLease(leaseId);
+      expect(lease.periodsReleased).to.equal(BigInt(periods));
+      expect(lease.completedNaturally).to.equal(true);
+      expect(lease.disputesLostCount).to.equal(0n); // an amicable credit is not a dispute loss
+      expect(await credential.balanceOf(tenant.address)).to.equal(1n);
+    });
+
+    it("reverts an offer from anyone but the landlord", async () => {
+      const fixture = await loadFixture(deployFixture);
+      const { escrow, tenant, stranger } = fixture;
+      await fundLandlord(fixture);
+      const { leaseId } = await disputedLease(fixture);
+
+      await expect(escrow.connect(tenant).offerRepairCredit(leaseId, USDC(100))).to.be.revertedWithCustomError(
+        escrow,
+        "NotLandlord",
+      );
+      await expect(escrow.connect(stranger).offerRepairCredit(leaseId, USDC(100))).to.be.revertedWithCustomError(
+        escrow,
+        "NotLandlord",
+      );
+    });
+
+    it("reverts an accept from anyone but the tenant", async () => {
+      const fixture = await loadFixture(deployFixture);
+      const { escrow, landlord, stranger } = fixture;
+      await fundLandlord(fixture);
+      const { leaseId } = await disputedLease(fixture);
+      await escrow.connect(landlord).offerRepairCredit(leaseId, USDC(150));
+
+      await expect(escrow.connect(landlord).acceptRepairCredit(leaseId)).to.be.revertedWithCustomError(
+        escrow,
+        "NotTenant",
+      );
+      await expect(escrow.connect(stranger).acceptRepairCredit(leaseId)).to.be.revertedWithCustomError(
+        escrow,
+        "NotTenant",
+      );
+    });
+
+    it("reverts a zero-amount offer", async () => {
+      const fixture = await loadFixture(deployFixture);
+      const { escrow, landlord } = fixture;
+      await fundLandlord(fixture);
+      const { leaseId } = await disputedLease(fixture);
+
+      await expect(escrow.connect(landlord).offerRepairCredit(leaseId, 0)).to.be.revertedWithCustomError(
+        escrow,
+        "InvalidCreditAmount",
+      );
+    });
+
+    it("reverts accepting when there is no offer", async () => {
+      const fixture = await loadFixture(deployFixture);
+      const { escrow, tenant } = fixture;
+      await fundLandlord(fixture);
+      const { leaseId } = await disputedLease(fixture);
+
+      await expect(escrow.connect(tenant).acceptRepairCredit(leaseId)).to.be.revertedWithCustomError(
+        escrow,
+        "NoRepairCreditOffer",
+      );
+    });
+
+    it("reverts offering when there is no active dispute", async () => {
+      const fixture = await loadFixture(deployFixture);
+      const { escrow, landlord } = fixture;
+      await fundLandlord(fixture);
+      const leaseId = await createSignedLease(fixture, USDC(400), 6, Frequency.Monthly);
+
+      await expect(escrow.connect(landlord).offerRepairCredit(leaseId, USDC(100))).to.be.revertedWithCustomError(
+        escrow,
+        "DisputeNotActive",
+      );
+    });
+
+    it("reverts offering or accepting outside the settlement window", async () => {
+      const fixture = await loadFixture(deployFixture);
+      const { escrow, tenant, landlord } = fixture;
+      await fundLandlord(fixture);
+      const { leaseId } = await disputedLease(fixture);
+      await escrow.connect(landlord).offerRepairCredit(leaseId, USDC(150));
+
+      await time.increase(SETTLEMENT_WINDOW + 1);
+
+      await expect(escrow.connect(landlord).offerRepairCredit(leaseId, USDC(150))).to.be.revertedWithCustomError(
+        escrow,
+        "SettlementWindowClosed",
+      );
+      await expect(escrow.connect(tenant).acceptRepairCredit(leaseId)).to.be.revertedWithCustomError(
+        escrow,
+        "SettlementWindowClosed",
+      );
+    });
+
+    it("reverts offering a repair credit on a caution-claim dispute", async () => {
+      const fixture = await loadFixture(deployFixture);
+      const { escrow, tenant, landlord } = fixture;
+      await fundLandlord(fixture);
+      const amountPerPeriod = USDC(400);
+      const periods = 2;
+      const caution = USDC(500);
+      const leaseId = await createSignedLease(fixture, amountPerPeriod, periods, Frequency.Monthly, caution);
+
+      // Run the lease to natural completion so the landlord can file a caution claim.
+      for (let i = 0; i < periods; i++) {
+        await time.increase(INTERVAL_SECONDS[Frequency.Monthly]);
+        await escrow.releaseTranche(leaseId);
+      }
+      await escrow.connect(landlord).fileDepositClaim(leaseId, USDC(200), ethers.keccak256(ethers.toUtf8Bytes("evidence")));
+
+      await expect(escrow.connect(landlord).offerRepairCredit(leaseId, USDC(100))).to.be.revertedWithCustomError(
+        escrow,
+        "RepairCreditOnCautionClaim",
+      );
+    });
+
+    it("lets the landlord withdraw an unaccepted offer", async () => {
+      const fixture = await loadFixture(deployFixture);
+      const { escrow, usdc, landlord } = fixture;
+      await fundLandlord(fixture);
+      const { leaseId } = await disputedLease(fixture);
+      const credit = USDC(150);
+      await escrow.connect(landlord).offerRepairCredit(leaseId, credit);
+
+      const landlordBefore = await usdc.balanceOf(landlord.address);
+      await expect(escrow.connect(landlord).withdrawRepairCredit(leaseId))
+        .to.emit(escrow, "RepairCreditWithdrawn")
+        .withArgs(leaseId, credit);
+
+      expect((await usdc.balanceOf(landlord.address)) - landlordBefore).to.equal(credit);
+      expect((await escrow.getLease(leaseId)).repairCreditHeld).to.equal(0n);
+    });
+
+    it("replaces a prior offer, refunding the old amount and holding only the new", async () => {
+      const fixture = await loadFixture(deployFixture);
+      const { escrow, usdc, landlord } = fixture;
+      await fundLandlord(fixture);
+      const { leaseId } = await disputedLease(fixture);
+      const escrowAddr = await escrow.getAddress();
+
+      await escrow.connect(landlord).offerRepairCredit(leaseId, USDC(150));
+      const landlordBefore = await usdc.balanceOf(landlord.address);
+      const contractBefore = await usdc.balanceOf(escrowAddr);
+
+      await escrow.connect(landlord).offerRepairCredit(leaseId, USDC(250));
+
+      // Net change from the first-offer baseline is only the delta (100 more held).
+      expect(landlordBefore - (await usdc.balanceOf(landlord.address))).to.equal(USDC(100));
+      expect((await usdc.balanceOf(escrowAddr)) - contractBefore).to.equal(USDC(100));
+      expect((await escrow.getLease(leaseId)).repairCreditHeld).to.equal(USDC(250));
+    });
+
+    it("auto-refunds a held credit when the dispute resolves via arbitration instead", async () => {
+      const fixture = await loadFixture(deployFixture);
+      const { escrow, usdc, landlord, arbiter } = fixture;
+      await fundLandlord(fixture);
+      const { leaseId } = await disputedLease(fixture);
+      const credit = USDC(150);
+      await escrow.connect(landlord).offerRepairCredit(leaseId, credit);
+
+      await time.increase(SETTLEMENT_WINDOW + 1);
+      const landlordBefore = await usdc.balanceOf(landlord.address);
+
+      // Resolve 100% to landlord: distributes nothing from escrow, so the only balance
+      // change to the landlord is the auto-refunded repair credit.
+      await escrow.connect(arbiter).resolveDispute(leaseId, 10_000);
+
+      expect((await usdc.balanceOf(landlord.address)) - landlordBefore).to.equal(credit);
+      expect((await escrow.getLease(leaseId)).repairCreditHeld).to.equal(0n);
+    });
+
+    it("reverts an offer the landlord hasn't approved USDC for", async () => {
+      const fixture = await loadFixture(deployFixture);
+      const { escrow, usdc, landlord } = fixture;
+      // Fund but do NOT approve.
+      await usdc.mint(landlord.address, USDC(10_000));
+      const { leaseId } = await disputedLease(fixture);
+
+      await expect(escrow.connect(landlord).offerRepairCredit(leaseId, USDC(150))).to.be.reverted;
+    });
+  });
+
   describe("disputes — Tier 2 arbitration", () => {
     it("reverts if the arbiter tries to resolve before the settlement window closes", async () => {
       const fixture = await loadFixture(deployFixture);

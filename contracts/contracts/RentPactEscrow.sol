@@ -95,6 +95,16 @@ contract RentPactEscrow is ReentrancyGuard {
         // proposal, if any. settlementProposer == address(0) means no open proposal.
         uint16 settlementProposedBps;
         address settlementProposer;
+        // Repair-credit remedy (Constitution Article 4.6) — a landlord-funded side
+        // payment that resolves a dispute WITHOUT touching escrow, so the release
+        // schedule resumes normally. Non-zero means the landlord has offered (and this
+        // contract is holding) that many token base units, awaiting the tenant's
+        // acceptance. Held funds are commingled in this contract's balance but tracked
+        // per-lease here and only ever paid to the tenant (accept) or back to the
+        // landlord (withdraw / auto-refund on any other resolution) — every escrow
+        // payout is computed from lease fields, never from token.balanceOf, so this
+        // never affects any other lease's accounting.
+        uint256 repairCreditHeld;
         // true while the currently active dispute is over a caution claim rather than
         // rent tranches — tells _finalizeDispute which pool of funds to split.
         bool disputeIsCautionClaim;
@@ -189,6 +199,9 @@ contract RentPactEscrow is ReentrancyGuard {
     event LeaseCompleted(uint256 indexed leaseId);
     event DisputeRaised(uint256 indexed leaseId, address indexed tenant, string reason);
     event SettlementProposed(uint256 indexed leaseId, address indexed proposer, uint16 landlordBps);
+    event RepairCreditOffered(uint256 indexed leaseId, uint256 amount);
+    event RepairCreditAccepted(uint256 indexed leaseId, uint256 amount);
+    event RepairCreditWithdrawn(uint256 indexed leaseId, uint256 amount);
     event DisputeResolved(
         uint256 indexed leaseId,
         uint16 landlordBps,
@@ -230,6 +243,9 @@ contract RentPactEscrow is ReentrancyGuard {
     error SettlementWindowNotClosed();
     error NoSettlementProposal();
     error CannotAcceptOwnProposal();
+    error NoRepairCreditOffer();
+    error RepairCreditOnCautionClaim();
+    error InvalidCreditAmount();
     error ArbitrationWindowNotElapsed();
     error NoCautionFee();
     error LeaseNotComplete();
@@ -413,6 +429,74 @@ contract RentPactEscrow is ReentrancyGuard {
         _finalizeDispute(leaseId, lease, landlordBps, ResolutionType.Settlement);
     }
 
+    /// @notice Repair-credit remedy (Article 4.6) — the landlord offers to pay the tenant
+    /// a fixed credit (e.g. reimbursing a repair the tenant handled) to resolve the
+    /// dispute WITHOUT dividing escrow, so the lease continues on its normal schedule.
+    /// The offered amount is pulled from the landlord's wallet into this contract and
+    /// held until the tenant accepts (funds go to the tenant), the landlord withdraws
+    /// it, or the dispute resolves another way (auto-refunded to the landlord in
+    /// `_finalizeDispute`). Requires the landlord to have approved this contract for
+    /// `creditAmount` first, exactly like a tenant's deposit approval.
+    /// @dev Landlord-only and, unlike a settlement, one-directional: the party paying is
+    /// always the landlord, so there is no "accept your own offer" case to guard.
+    /// @param creditAmount Credit to pay the tenant, in token base units. Must be > 0.
+    function offerRepairCredit(uint256 leaseId, uint256 creditAmount) external nonReentrant leaseExists(leaseId) {
+        Lease storage lease = leases[leaseId];
+        if (msg.sender != lease.landlord) revert NotLandlord();
+        if (!lease.disputeActive) revert DisputeNotActive();
+        if (lease.disputeIsCautionClaim) revert RepairCreditOnCautionClaim();
+        if (creditAmount == 0) revert InvalidCreditAmount();
+        if (block.timestamp > lease.disputeRaisedAt + SETTLEMENT_WINDOW) revert SettlementWindowClosed();
+
+        // Replace semantics, mirroring proposeSettlement: a new offer supersedes any
+        // prior unaccepted one. Return the previously held amount before holding the new.
+        uint256 previouslyHeld = lease.repairCreditHeld;
+        lease.repairCreditHeld = creditAmount;
+        if (previouslyHeld > 0) token.safeTransfer(lease.landlord, previouslyHeld);
+        token.safeTransferFrom(lease.landlord, address(this), creditAmount);
+
+        emit RepairCreditOffered(leaseId, creditAmount);
+    }
+
+    /// @notice Repair-credit remedy (Article 4.6) — the tenant accepts the landlord's
+    /// held credit. The credit transfers to the tenant, the dispute clears, and the
+    /// release schedule resumes untouched (`periodsReleased` is never modified — the
+    /// credit never came from escrow). No dispute-loss is recorded for either party;
+    /// this is an amicable resolution, not a ruling.
+    function acceptRepairCredit(uint256 leaseId) external nonReentrant leaseExists(leaseId) {
+        Lease storage lease = leases[leaseId];
+        if (msg.sender != lease.tenant) revert NotTenant();
+        if (!lease.disputeActive) revert DisputeNotActive();
+        if (lease.repairCreditHeld == 0) revert NoRepairCreditOffer();
+        if (block.timestamp > lease.disputeRaisedAt + SETTLEMENT_WINDOW) revert SettlementWindowClosed();
+
+        uint256 credit = lease.repairCreditHeld;
+        lease.repairCreditHeld = 0;
+        lease.disputeActive = false;
+        lease.settlementProposer = address(0);
+        lease.settlementProposedBps = 0;
+
+        token.safeTransfer(lease.tenant, credit);
+
+        emit RepairCreditAccepted(leaseId, credit);
+    }
+
+    /// @notice Repair-credit remedy (Article 4.6) — the landlord reclaims a held credit
+    /// the tenant never accepted. Callable regardless of dispute state, so a landlord is
+    /// never locked out of their own funds (e.g. after the dispute resolved via
+    /// arbitration, though `_finalizeDispute` already auto-refunds in that case).
+    function withdrawRepairCredit(uint256 leaseId) external nonReentrant leaseExists(leaseId) {
+        Lease storage lease = leases[leaseId];
+        if (msg.sender != lease.landlord) revert NotLandlord();
+        if (lease.repairCreditHeld == 0) revert NoRepairCreditOffer();
+
+        uint256 credit = lease.repairCreditHeld;
+        lease.repairCreditHeld = 0;
+        token.safeTransfer(lease.landlord, credit);
+
+        emit RepairCreditWithdrawn(leaseId, credit);
+    }
+
     /// @notice Tier 2 — arbiter rules on a dispute once the direct-settlement window has
     /// closed. Article 4.4.
     /// @param landlordBps Share of the remaining escrow going to the landlord, in basis
@@ -464,6 +548,15 @@ contract RentPactEscrow is ReentrancyGuard {
         lease.disputeActive = false;
         lease.settlementProposer = address(0);
         lease.settlementProposedBps = 0;
+
+        // Any repair credit the landlord had offered but the tenant didn't accept is
+        // returned to the landlord — this dispute is concluding a different way, so the
+        // offer lapses and its held funds must never be stranded in this contract.
+        if (lease.repairCreditHeld > 0) {
+            uint256 heldCredit = lease.repairCreditHeld;
+            lease.repairCreditHeld = 0;
+            token.safeTransfer(lease.landlord, heldCredit);
+        }
 
         if (landlordBps >= BPS_DENOMINATOR / 2) {
             lease.disputesLostCount += 1;
