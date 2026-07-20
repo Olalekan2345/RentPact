@@ -158,6 +158,8 @@ type ActivityEventsRow = {
   timestamp: number;
   amount: number | null;
   tx_hash: string | null;
+  landlord_bps: number | null;
+  resolution_type: string | null;
 };
 
 export type Database = {

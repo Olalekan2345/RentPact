@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { recordActivityEvent, getActivityFeedForAddress, type ActivityType } from "@/lib/activityEventServer";
+import {
+  recordActivityEvent,
+  getActivityFeedForAddress,
+  type ActivityType,
+  type ResolutionType,
+} from "@/lib/activityEventServer";
 
 const VALID_TYPES: ActivityType[] = [
   "deposit",
@@ -12,6 +17,8 @@ const VALID_TYPES: ActivityType[] = [
   "caution-claim-resolved",
 ];
 
+const VALID_RESOLUTION_TYPES: ResolutionType[] = ["settlement", "arbitration", "auto-fallback"];
+
 export async function GET(req: NextRequest) {
   const address = req.nextUrl.searchParams.get("address");
   const limit = Number(req.nextUrl.searchParams.get("limit") ?? "50");
@@ -23,7 +30,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { id, leaseId, type, timestamp, amount, txHash } = await req.json();
+    const { id, leaseId, type, timestamp, amount, txHash, landlordBps, resolutionType } = await req.json();
 
     if (!id || !leaseId || !VALID_TYPES.includes(type) || typeof timestamp !== "number") {
       return NextResponse.json(
@@ -39,6 +46,8 @@ export async function POST(req: NextRequest) {
       timestamp,
       amount: typeof amount === "number" ? amount : null,
       txHash: typeof txHash === "string" ? txHash : null,
+      landlordBps: typeof landlordBps === "number" ? landlordBps : null,
+      resolutionType: VALID_RESOLUTION_TYPES.includes(resolutionType) ? resolutionType : null,
     });
     return NextResponse.json({ ok: true });
   } catch (error) {

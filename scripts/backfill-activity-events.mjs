@@ -1,10 +1,10 @@
 /**
  * One-off backfill: scans RentPactEscrow's full event history once and
  * populates activity_events, so history that happened *before*
- * migration 0006 shipped doesn't just vanish from the fast feed (it would
- * otherwise show empty until new activity happens). Every event from here
- * on is recorded live by leaseData.ts — this script only ever needs to run
- * once, right after the migration.
+ * migrations 0006/0007 shipped doesn't just vanish from the fast feed (it
+ * would otherwise show empty until new activity happens). Every event from
+ * here on is recorded live by leaseData.ts — safe and idempotent to re-run
+ * this any time, e.g. after 0007 added landlord_bps/resolution_type.
  *
  * Run locally (uses the service-role key; never ship this to the client):
  *   node --env-file=.env.local scripts/backfill-activity-events.mjs
@@ -183,7 +183,9 @@ async function blockTimestampMs(blockNumber) {
   return ts;
 }
 
-async function toActivityRow(log, type, amount) {
+const RESOLUTION_TYPE_LABEL = ["settlement", "arbitration", "auto-fallback"];
+
+async function toActivityRow(log, type, amount, extra = {}) {
   return {
     id: `${log.transactionHash}-${type}`,
     lease_id: log.args.leaseId.toString(),
@@ -191,6 +193,9 @@ async function toActivityRow(log, type, amount) {
     timestamp: await blockTimestampMs(log.blockNumber),
     amount,
     tx_hash: log.transactionHash,
+    landlord_bps: null,
+    resolution_type: null,
+    ...extra,
   };
 }
 
@@ -220,7 +225,15 @@ async function main() {
   console.log("Scanning DisputeResolved…");
   for (const log of await scanAllLogs("DisputeResolved")) {
     rows.push(
-      await toActivityRow(log, "dispute-resolved", usdc(log.args.releasedToLandlord) + usdc(log.args.refundedToTenant)),
+      await toActivityRow(
+        log,
+        "dispute-resolved",
+        usdc(log.args.releasedToLandlord) + usdc(log.args.refundedToTenant),
+        {
+          landlord_bps: Number(log.args.landlordBps),
+          resolution_type: RESOLUTION_TYPE_LABEL[Number(log.args.resolutionType)] ?? null,
+        },
+      ),
     );
   }
 
@@ -241,6 +254,10 @@ async function main() {
         log,
         "caution-claim-resolved",
         usdc(log.args.releasedToLandlord) + usdc(log.args.refundedToTenant),
+        {
+          landlord_bps: Number(log.args.landlordBps),
+          resolution_type: RESOLUTION_TYPE_LABEL[Number(log.args.resolutionType)] ?? null,
+        },
       ),
     );
   }

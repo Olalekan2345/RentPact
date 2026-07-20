@@ -18,6 +18,8 @@ export type ActivityType =
   | "caution-released"
   | "caution-claim-resolved";
 
+export type ResolutionType = "settlement" | "arbitration" | "auto-fallback";
+
 export interface ActivityEvent {
   id: string;
   leaseId: string;
@@ -25,6 +27,9 @@ export interface ActivityEvent {
   timestamp: number;
   amount: number | null;
   txHash: string | null;
+  /** Only set for dispute-resolved/caution-claim-resolved rows — see migration 0007. */
+  landlordBps: number | null;
+  resolutionType: ResolutionType | null;
 }
 
 function fromRow(row: {
@@ -34,6 +39,8 @@ function fromRow(row: {
   timestamp: number;
   amount: number | null;
   tx_hash: string | null;
+  landlord_bps: number | null;
+  resolution_type: string | null;
 }): ActivityEvent {
   return {
     id: row.id,
@@ -42,6 +49,8 @@ function fromRow(row: {
     timestamp: row.timestamp,
     amount: row.amount,
     txHash: row.tx_hash,
+    landlordBps: row.landlord_bps,
+    resolutionType: row.resolution_type as ResolutionType | null,
   };
 }
 
@@ -57,6 +66,8 @@ export async function recordActivityEvent(event: ActivityEvent): Promise<void> {
         timestamp: event.timestamp,
         amount: event.amount,
         tx_hash: event.txHash,
+        landlord_bps: event.landlordBps,
+        resolution_type: event.resolutionType,
       },
       { onConflict: "id" },
     );

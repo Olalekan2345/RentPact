@@ -3,7 +3,12 @@ import type { ReleaseFrequency } from "@/components/escrow";
 import { MOCK_MODE, sendGaslessTransaction } from "@/lib/circle";
 import * as mockStore from "@/lib/leaseStore";
 import { getLeaseMetadata, saveLeaseMetadata, findLeaseIdsForAddress } from "@/lib/leaseMetadataStore";
-import { recordActivityEvent, fetchActivityFeed, type ActivityType as RecordedActivityType } from "@/lib/activityEventStore";
+import {
+  recordActivityEvent,
+  fetchActivityFeed,
+  type ActivityType as RecordedActivityType,
+  type ResolutionType,
+} from "@/lib/activityEventStore";
 import { cachedChainRead } from "@/lib/chainCache";
 import {
   readLease,
@@ -67,6 +72,8 @@ function recordActivity(event: {
   timestamp: number;
   amount: number | null;
   txHash: string;
+  landlordBps?: number | null;
+  resolutionType?: ResolutionType | null;
 }): void {
   recordActivityEvent(event).catch((err) => console.error("Could not record activity event:", err));
 }
@@ -399,7 +406,13 @@ function splitSummary(landlordBps: number): string {
  * disputeIsCautionClaim and cautionClaimedAmount reset once it resolves —
  * same reasoning as releaseTranche's `previous` snapshot above.
  */
-function recordDisputeResolution(previous: Lease | null, lease: Lease, hash: `0x${string}`): void {
+function recordDisputeResolution(
+  previous: Lease | null,
+  lease: Lease,
+  hash: `0x${string}`,
+  landlordBps: number,
+  resolutionType: ResolutionType,
+): void {
   const wasCautionClaim = previous?.disputeIsCautionClaim ?? false;
   const amount = wasCautionClaim
     ? (previous?.cautionClaimedAmount ?? null)
@@ -414,6 +427,8 @@ function recordDisputeResolution(previous: Lease | null, lease: Lease, hash: `0x
     timestamp: lease.resolvedDisputes.at(-1)?.resolvedAt ?? Date.now(),
     amount,
     txHash: hash,
+    landlordBps,
+    resolutionType,
   });
 }
 
@@ -436,7 +451,7 @@ export async function resolveDispute(
         description: `resolveDispute(${id})`,
       });
       const resolved = await onChainLeaseToLease(leaseId, true);
-      recordDisputeResolution(previous, resolved, hash);
+      recordDisputeResolution(previous, resolved, hash, landlordBps, "arbitration");
       return resolved;
     }
     return mockStore.resolveDispute(id, landlordBps);
@@ -503,7 +518,7 @@ export async function acceptSettlement(
         description: `acceptSettlement(${id})`,
       });
       const resolved = await onChainLeaseToLease(leaseId, true);
-      recordDisputeResolution(previous, resolved, hash);
+      recordDisputeResolution(previous, resolved, hash, previous?.settlementProposedBps ?? 0, "settlement");
       return resolved;
     }
     return mockStore.acceptSettlement(id, acceptorRole);
@@ -532,7 +547,7 @@ export async function autoResolveOverdueDispute(id: string, callerAddress: Addre
         description: `autoResolveOverdueDispute(${id})`,
       });
       const resolved = await onChainLeaseToLease(leaseId, true);
-      recordDisputeResolution(previous, resolved, hash);
+      recordDisputeResolution(previous, resolved, hash, BPS_DENOMINATOR, "auto-fallback");
       return resolved;
     }
     return mockStore.autoResolveOverdueDispute(id);

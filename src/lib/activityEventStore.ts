@@ -8,6 +8,8 @@ export type ActivityType =
   | "caution-released"
   | "caution-claim-resolved";
 
+export type ResolutionType = "settlement" | "arbitration" | "auto-fallback";
+
 export interface ActivityEvent {
   id: string;
   leaseId: string;
@@ -15,6 +17,9 @@ export interface ActivityEvent {
   timestamp: number;
   amount: number | null;
   txHash: string | null;
+  /** Only set for dispute-resolved/caution-claim-resolved rows. */
+  landlordBps?: number | null;
+  resolutionType?: ResolutionType | null;
 }
 
 /** Fire-and-forget from leaseData.ts right after a mutation lands — see activityEventServer.ts. */
