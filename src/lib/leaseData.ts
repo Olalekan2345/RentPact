@@ -796,6 +796,28 @@ export async function getLease(id: string, withHistory: boolean): Promise<Lease 
   return mockStore.getLease(id);
 }
 
+/**
+ * Reads each lease id, skipping any that can't be read instead of failing
+ * the whole list. The Postgres address index (lease_metadata) can hand back
+ * ids for leases that don't exist on the currently-configured contract — most
+ * notably after a contract redeploy, when an old account's ids point at a
+ * lease on the previous deployment, so readLease reverts LeaseNotFound. A
+ * single such id used to reject the entire Promise.all and leave the
+ * dashboard stuck on its skeleton forever; now it's simply left out.
+ */
+async function readLeasesResilient(ids: string[], withHistory: boolean): Promise<Lease[]> {
+  const settled = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        return await onChainLeaseToLease(BigInt(id), withHistory);
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return settled.filter((l): l is Lease => l !== null).sort((a, b) => b.createdAt - a.createdAt);
+}
+
 export async function listLeasesForTenant(
   params: { email: string; address: Address },
   withHistory: boolean,
@@ -803,8 +825,7 @@ export async function listLeasesForTenant(
   if (!MOCK_MODE) {
     return cachedChainRead(`leases:tenant:${params.address}:${withHistory ? "full" : "light"}`, async () => {
       const ids = await findLeaseIdsForAddress(params.address, "tenant");
-      const leases = await Promise.all(ids.map((id) => onChainLeaseToLease(BigInt(id), withHistory)));
-      return leases.sort((a, b) => b.createdAt - a.createdAt);
+      return readLeasesResilient(ids, withHistory);
     });
   }
   return mockStore.listLeasesForTenant(params.email);
@@ -817,8 +838,7 @@ export async function listLeasesForLandlord(
   if (!MOCK_MODE) {
     return cachedChainRead(`leases:landlord:${params.address}:${withHistory ? "full" : "light"}`, async () => {
       const ids = await findLeaseIdsForAddress(params.address, "landlord");
-      const leases = await Promise.all(ids.map((id) => onChainLeaseToLease(BigInt(id), withHistory)));
-      return leases.sort((a, b) => b.createdAt - a.createdAt);
+      return readLeasesResilient(ids, withHistory);
     });
   }
   return mockStore.listLeasesForLandlord(params.email);
