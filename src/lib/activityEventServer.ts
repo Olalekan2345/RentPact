@@ -74,6 +74,17 @@ export async function recordActivityEvent(event: ActivityEvent): Promise<void> {
   if (error) throw error;
 }
 
+/** All recorded events for one lease — used by the dispute panel instead of an address-wide fetch. */
+export async function getActivityFeedForLease(leaseId: string): Promise<ActivityEvent[]> {
+  const { data } = await supabaseAdmin()
+    .from("activity_events")
+    .select()
+    .eq("lease_id", leaseId)
+    .order("timestamp", { ascending: false });
+
+  return (data ?? []).map(fromRow);
+}
+
 export async function getActivityFeedForAddress(address: string, limit: number): Promise<ActivityEvent[]> {
   const normalized = address.trim().toLowerCase();
 

@@ -17,9 +17,9 @@ import {
   proposeSettlement,
   acceptSettlement,
   autoResolveOverdueDispute,
-  getLeaseActivity,
   type Lease,
 } from "@/lib/leaseData";
+import { fetchActivityFeedForLease, type ResolutionType } from "@/lib/activityEventStore";
 import { fetchThread, sendTextMessage, type Message } from "@/lib/messages";
 import { fetchListingIdForLease, fetchListing, type Listing } from "@/lib/listings";
 import { fetchDisputeRulingsForLease, type DisputeRulingRecord } from "@/lib/disputeRuling";
@@ -37,6 +37,13 @@ function ProgressBar({ fraction, tone = "gold" }: { fraction: number; tone?: "go
   );
 }
 
+interface LastResolution {
+  raisedAt: number;
+  resolvedAt: number;
+  landlordBps: number;
+  resolutionType: ResolutionType;
+}
+
 export default function DisputePanelPage() {
   const { id } = useParams<{ id: string }>();
   const { session, isLoading } = useAuth();
@@ -47,6 +54,7 @@ export default function DisputePanelPage() {
   const [sourceListing, setSourceListing] = useState<Listing | null>(null);
   const [rulings, setRulings] = useState<DisputeRulingRecord[]>([]);
   const [txHash, setTxHash] = useState<string | null>(null);
+  const [lastResolution, setLastResolution] = useState<LastResolution | null>(null);
   const [busy, setBusy] = useState(false);
   const [proposedPct, setProposedPct] = useState(50);
   const [arbiterPct, setArbiterPct] = useState(50);
@@ -56,13 +64,31 @@ export default function DisputePanelPage() {
   const [constitutionOpen, setConstitutionOpen] = useState(false);
 
   const refresh = useCallback(() => {
-    // true: this page renders lease.resolvedDisputes, which needs the historical scan.
-    getLease(id, true).then(setLease);
+    // false: this page no longer needs the historical dispute/caution-claim
+    // scans — resolution history comes from activity_events below instead
+    // (fast, and correctly empty while the dispute is still ongoing, instead
+    // of paying to scan for something that provably isn't there yet).
+    getLease(id, false).then(setLease);
     fetchThread(id).then(setThread);
     fetchDisputeRulingsForLease(id).then(setRulings);
-    getLeaseActivity(id).then((items) => {
-      const resolved = items.find((i) => i.type === "dispute-resolved");
-      setTxHash(resolved?.txHash ?? null);
+    fetchActivityFeedForLease(id).then((events) => {
+      const sorted = events.slice().sort((a, b) => a.timestamp - b.timestamp);
+      const raised = sorted.filter((e) => e.type === "dispute-raised");
+      const resolved = sorted.filter((e) => e.type === "dispute-resolved" || e.type === "caution-claim-resolved");
+      const last = resolved.at(-1) ?? null;
+      if (!last) {
+        setLastResolution(null);
+        setTxHash(null);
+        return;
+      }
+      const raisedBefore = raised.at(resolved.indexOf(last)) ?? null;
+      setLastResolution({
+        raisedAt: raisedBefore?.timestamp ?? last.timestamp,
+        resolvedAt: last.timestamp,
+        landlordBps: last.landlordBps ?? 0,
+        resolutionType: last.resolutionType ?? "arbitration",
+      });
+      setTxHash(last.txHash);
     });
   }, [id]);
 
@@ -109,7 +135,6 @@ export default function DisputePanelPage() {
     );
   }
 
-  const lastResolution = lease.resolvedDisputes.at(-1) ?? null;
   const raisedAt = lease.disputeRaisedAt ?? lastResolution?.raisedAt ?? null;
   const settlementDeadline = raisedAt ? raisedAt + SETTLEMENT_WINDOW_MS : null;
   const arbitrationDeadline = raisedAt ? raisedAt + SETTLEMENT_WINDOW_MS + ARBITRATION_WINDOW_MS : null;

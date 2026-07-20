@@ -37,3 +37,11 @@ export async function fetchActivityFeed(address: string, limit: number): Promise
   const data = await res.json();
   return data.events ?? [];
 }
+
+/** All recorded events for one lease — used by the dispute panel, which already knows the leaseId from the URL. */
+export async function fetchActivityFeedForLease(leaseId: string): Promise<ActivityEvent[]> {
+  const res = await fetch(`/api/activity-events?leaseId=${encodeURIComponent(leaseId)}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.events ?? [];
+}

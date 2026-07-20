@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   recordActivityEvent,
   getActivityFeedForAddress,
+  getActivityFeedForLease,
   type ActivityType,
   type ResolutionType,
 } from "@/lib/activityEventServer";
@@ -21,9 +22,17 @@ const VALID_RESOLUTION_TYPES: ResolutionType[] = ["settlement", "arbitration", "
 
 export async function GET(req: NextRequest) {
   const address = req.nextUrl.searchParams.get("address");
-  const limit = Number(req.nextUrl.searchParams.get("limit") ?? "50");
-  if (!address) return NextResponse.json({ error: "address query param is required" }, { status: 400 });
+  const leaseId = req.nextUrl.searchParams.get("leaseId");
 
+  if (leaseId) {
+    const events = await getActivityFeedForLease(leaseId);
+    return NextResponse.json({ events });
+  }
+
+  if (!address) {
+    return NextResponse.json({ error: "address or leaseId query param is required" }, { status: 400 });
+  }
+  const limit = Number(req.nextUrl.searchParams.get("limit") ?? "50");
   const events = await getActivityFeedForAddress(address, limit);
   return NextResponse.json({ events });
 }
