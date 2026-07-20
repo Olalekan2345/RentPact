@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth-context";
@@ -28,9 +28,13 @@ export default function LeaseInvitePage() {
   const [acceptedConstitution, setAcceptedConstitution] = useState(false);
   const cautionLabel = useCautionFeeLabel();
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     getLease(id, false).then(setLease);
   }, [id]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
   // The gasless signature round trip (Circle's PIN challenge, then waiting
   // for on-chain confirmation) can run long — this keeps the button from
@@ -49,8 +53,13 @@ export default function LeaseInvitePage() {
 
   if (lease === null) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-cream px-4 text-center">
-        <p className="text-ink-muted">This lease invite couldn&apos;t be found.</p>
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-cream px-4 text-center">
+        <p className="text-ink-muted">
+          Couldn&apos;t load this lease invite — usually a temporary network hiccup.
+        </p>
+        <Button variant="secondary" onClick={refresh}>
+          Try again
+        </Button>
       </div>
     );
   }

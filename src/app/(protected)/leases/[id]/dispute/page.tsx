@@ -98,7 +98,14 @@ export default function DisputePanelPage() {
 
   if (lease === null) {
     return (
-        <div className="mx-auto max-w-xl px-4 py-16 text-center text-ink-muted">Lease not found.</div>
+      <div className="mx-auto max-w-xl px-4 py-16 text-center">
+        <p className="text-ink-muted">
+          Couldn&apos;t load this lease — this is usually a temporary network hiccup, not a missing lease.
+        </p>
+        <Button variant="secondary" className="mt-4" onClick={refresh}>
+          Try again
+        </Button>
+      </div>
     );
   }
 

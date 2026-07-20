@@ -177,11 +177,16 @@ export default function LeaseDetailPage() {
   if (lease === null) {
     return (
         <div className="mx-auto max-w-xl px-4 py-16 text-center">
-          <h1 className="text-2xl text-ink">Lease not found</h1>
-          <p className="mt-2 text-ink-muted">This lease may have been created on a different device.</p>
-          <Link href="/dashboard" className="mt-6 inline-block">
-            <Button>Back to dashboard</Button>
-          </Link>
+          <h1 className="text-2xl text-ink">Couldn&apos;t load this lease</h1>
+          <p className="mt-2 text-ink-muted">Usually a temporary network hiccup — try again before assuming it&apos;s missing.</p>
+          <div className="mt-6 flex items-center justify-center gap-3">
+            <Button variant="secondary" onClick={refresh}>
+              Try again
+            </Button>
+            <Link href="/dashboard">
+              <Button>Back to dashboard</Button>
+            </Link>
+          </div>
         </div>
     );
   }

@@ -648,15 +648,32 @@ export async function releaseCaution(id: string, callerAddress: Address): Promis
  * other view should pass false to skip the per-lease event scans — see
  * onChainLeaseToLease's docstring.
  */
+/**
+ * Retries the whole read a couple of times before giving up — a lease with
+ * an active dispute pulls in extra event scans (withHistory), which means
+ * more RPC calls and more surface for a transient hiccup to slip past
+ * arcFriendly's own per-request retry. Without this, a flaky read here
+ * looked identical to a genuinely nonexistent lease (both just returned
+ * null) — misleading, since the contract's getLease() reverts outright for
+ * an id that doesn't exist, so almost every null in practice was actually
+ * a network blip, not a real 404.
+ */
 export async function getLease(id: string, withHistory: boolean): Promise<Lease | null> {
   if (!MOCK_MODE) {
-    try {
-      return await cachedChainRead(`lease:${id}:${withHistory ? "full" : "light"}`, () =>
-        onChainLeaseToLease(BigInt(id), withHistory),
-      );
-    } catch {
-      return null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await cachedChainRead(`lease:${id}:${withHistory ? "full" : "light"}`, () =>
+          onChainLeaseToLease(BigInt(id), withHistory),
+        );
+      } catch (err) {
+        if (attempt === 2) {
+          console.error(`Could not load lease ${id} after retries:`, err);
+          return null;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+      }
     }
+    return null;
   }
   return mockStore.getLease(id);
 }
