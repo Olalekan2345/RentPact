@@ -317,7 +317,7 @@ async function sendGaslessTransactionInner(params: GaslessCallParams): Promise<{
     // Find the transaction the approved challenge produced, then poll it
     // until it lands on-chain and a real tx hash is assigned.
     let transactionId: string | undefined;
-    for (let attempt = 0; attempt < 6 && !transactionId; attempt++) {
+    for (let attempt = 0; attempt < 10 && !transactionId; attempt++) {
       await delay(1000);
       const listRes = await fetch(`/api/circle/transactions?walletId=${session.walletId}`, {
         headers: { "X-User-Token": session.userToken },
@@ -328,7 +328,12 @@ async function sendGaslessTransactionInner(params: GaslessCallParams): Promise<{
     }
     if (!transactionId) throw new Error("Could not find the transaction created by the approved challenge.");
 
-    for (let attempt = 0; attempt < 12; attempt++) {
+    // Poll for a confirmed on-chain hash. Arc's public testnet confirmation
+    // time is variable (Gas Station submission + block time), so this window
+    // is deliberately generous — a slow-but-normal confirmation shouldn't
+    // surface as an error. CONFIRM_POLL_ATTEMPTS * 1500ms ≈ 60s.
+    const CONFIRM_POLL_ATTEMPTS = 40;
+    for (let attempt = 0; attempt < CONFIRM_POLL_ATTEMPTS; attempt++) {
       await delay(1500);
       const statusRes = await fetch(`/api/circle/transactions/${transactionId}`, {
         headers: { "X-User-Token": session.userToken },
@@ -343,7 +348,23 @@ async function sendGaslessTransactionInner(params: GaslessCallParams): Promise<{
       if (tx?.txHash) return { hash: tx.txHash as `0x${string}` };
       if (tx?.state === "FAILED") throw new Error("The transaction failed on-chain.");
     }
-    throw new Error("Timed out waiting for transaction confirmation.");
+
+    // One last check before giving up — the hash may have been assigned right
+    // at the edge of the window.
+    const finalRes = await fetch(`/api/circle/transactions/${transactionId}`, {
+      headers: { "X-User-Token": session.userToken },
+    });
+    if (finalRes.ok) {
+      const finalTx = (await finalRes.json())?.data?.transaction;
+      if (finalTx?.txHash) return { hash: finalTx.txHash as `0x${string}` };
+      if (finalTx?.state === "FAILED") throw new Error("The transaction failed on-chain.");
+    }
+    // Not confirmed within the window — but it may still land shortly. Say so
+    // honestly so the user checks before retrying (a blind retry can
+    // double-submit or fail against an allowance the pending tx already used).
+    throw new Error(
+      "This is taking longer than usual to confirm on Arc. It may still complete — check your dashboard in a moment before trying again.",
+    );
   }
 
   await delay(900);

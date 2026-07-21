@@ -244,6 +244,19 @@ export default function DepositPage() {
                       ? "Bridge & deposit"
                       : "Deposit into escrow"}
               </Button>
+
+              {step === "select-source" && (
+                <p className="text-center text-xs text-ink-soft">
+                  You&apos;ll approve twice — first to authorize the amount, then to deposit into escrow. Each is a
+                  quick PIN.
+                </p>
+              )}
+              {(step === "depositing" || step === "bridging") && (
+                <p className="text-center text-xs text-ink-soft">
+                  Confirming on-chain — this can take up to a minute on Arc testnet. Please keep this page open and
+                  don&apos;t refresh.
+                </p>
+              )}
             </motion.div>
           )}
 
