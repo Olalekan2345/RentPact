@@ -37,6 +37,7 @@ import {
   BPS_DENOMINATOR,
   getReputationStats as getOnChainReputationStats,
   getLeaseActivity as getOnChainLeaseActivity,
+  getTransactionSenders as getOnChainTransactionSenders,
   type ReputationStats,
   type ActivityItem,
 } from "@/lib/contracts/onChainLease";
@@ -974,6 +975,12 @@ export const escrowContractAddress = escrowAddress;
 export async function getLeaseActivity(id: string): Promise<ActivityItem[]> {
   if (MOCK_MODE) return [];
   return cachedChainRead(`lease-activity:${id}`, () => getOnChainLeaseActivity(BigInt(id)));
+}
+
+/** Who triggered each transaction (msg.sender) — e.g. which party released each tranche. Empty in mock mode. */
+export async function getTransactionSenders(hashes: string[]): Promise<Record<string, Address>> {
+  if (MOCK_MODE || hashes.length === 0) return {};
+  return getOnChainTransactionSenders(hashes);
 }
 
 export type { TenancyCredentialSummary };

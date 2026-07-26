@@ -408,6 +408,11 @@ export default function LeaseDetailPage() {
                   <Button variant="secondary">View dispute</Button>
                 </Link>
               )}
+              {status === "completed" && (
+                <Link href={`/leases/${lease.id}/record`}>
+                  <Button variant="secondary">Download lease record</Button>
+                </Link>
+              )}
             </div>
 
             {viewerRole === "tenant" && status === "active" && escalatedIssues.length === 0 && (

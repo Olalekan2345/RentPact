@@ -36,7 +36,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-cream md:flex">
       {/* Desktop sidebar */}
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col overflow-y-auto bg-forest-500 px-5 py-6 md:flex">
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col overflow-y-auto bg-forest-500 px-5 py-6 md:flex print:hidden">
         <div className="flex items-center justify-between px-2">
           <Link href="/dashboard" className="flex items-center gap-2">
             <LogoMark size={22} chip />
@@ -90,7 +90,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Mobile top bar */}
-      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-forest-100/60 bg-cream-100/90 px-4 py-4 backdrop-blur md:hidden">
+      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-forest-100/60 bg-cream-100/90 px-4 py-4 backdrop-blur md:hidden print:hidden">
         <Link href="/dashboard" className="flex items-center gap-2">
           <LogoMark size={24} />
           <span className="font-serif text-xl text-forest-500">RentPact</span>
@@ -111,7 +111,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
 
       {/* Mobile bottom nav */}
-      <nav className="fixed inset-x-0 bottom-0 z-20 flex border-t border-forest-100/60 bg-cream-100/95 backdrop-blur md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-20 flex border-t border-forest-100/60 bg-cream-100/95 backdrop-blur md:hidden print:hidden">
         {NAV_ITEMS.map(({ href, label, Icon }) => {
           const isActive = pathname === href;
           return (

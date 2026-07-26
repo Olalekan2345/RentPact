@@ -737,3 +737,24 @@ export async function getLeaseActivity(leaseId: bigint): Promise<ActivityItem[]>
     ]);
   return buildActivityItems({ created, signed, released, raised, resolved, cancelled, claimFiled, cautionReleased, claimResolved });
 }
+
+/**
+ * Resolves the sender (msg.sender) of each transaction hash. Used by the lease
+ * record to show who actually triggered each on-chain action — e.g. which party
+ * released each rent tranche, which the TrancheReleased event itself doesn't
+ * carry. One getTransaction per hash, serialized by arcFriendly; a hash that
+ * can't be read is simply omitted rather than failing the whole set.
+ */
+export async function getTransactionSenders(hashes: string[]): Promise<Record<string, Address>> {
+  const results = await Promise.all(
+    hashes.map(async (h) => {
+      try {
+        const tx = await publicClient.getTransaction({ hash: h as Hex });
+        return [h, tx.from as Address] as const;
+      } catch {
+        return [h, null] as const;
+      }
+    }),
+  );
+  return Object.fromEntries(results.filter((r): r is readonly [string, Address] => r[1] !== null));
+}
