@@ -15,17 +15,16 @@ import { fetchListingIdForLease, fetchListing, type Listing } from "@/lib/listin
 import { fetchMoveOutCondition, type MoveOutCondition } from "@/lib/moveOut";
 import { fetchDisputeRulingsForLease, type DisputeRulingRecord } from "@/lib/disputeRuling";
 import { CONDITION_AREAS } from "@/lib/condition";
+import { fetchActivityFeedForLease, type ActivityEvent } from "@/lib/activityEventStore";
 import {
   getLease,
-  getLeaseActivity,
   getTransactionSenders,
   leaseStatus,
   escrowContractAddress,
   type Lease,
-  type ActivityItem,
 } from "@/lib/leaseData";
 
-const ACTIVITY_LABEL: Record<ActivityItem["type"], string> = {
+const ACTIVITY_LABEL: Record<ActivityEvent["type"], string> = {
   deposit: "Escrow deposit — lease created",
   signed: "Lease signed",
   release: "Rent tranche released",
@@ -34,11 +33,12 @@ const ACTIVITY_LABEL: Record<ActivityItem["type"], string> = {
   "repair-credit-offered": "Repair credit offered",
   "repair-credit-accepted": "Repair credit accepted — lease resumed",
   "dispute-resolved": "Dispute resolved",
-  cancelled: "Lease cancelled",
   "caution-claim-filed": "Caution fee claim filed",
   "caution-released": "Caution fee returned",
   "caution-claim-resolved": "Caution fee claim resolved",
 };
+
+const toSec = (n: number) => (n > 1e12 ? Math.floor(n / 1000) : n);
 
 const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
@@ -48,7 +48,7 @@ export default function LeaseRecordPage() {
   const router = useRouter();
 
   const [lease, setLease] = useState<Lease | null | undefined>(undefined);
-  const [activity, setActivity] = useState<ActivityItem[]>([]);
+  const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [senders, setSenders] = useState<Record<string, string>>({});
   const [listing, setListing] = useState<Listing | null>(null);
   const [moveOut, setMoveOut] = useState<MoveOutCondition | null>(null);
@@ -60,8 +60,10 @@ export default function LeaseRecordPage() {
   }, [isLoading, session, router]);
 
   useEffect(() => {
-    // withHistory: true — the record needs resolved-dispute and caution-claim history.
-    getLease(id, true).then(setLease);
+    // withHistory:false — the record's dispute/caution history comes from the
+    // Postgres activity feed below, not the slow on-chain event scan (which can
+    // take minutes against Arc's rate-limited RPC and hung this page in prod).
+    getLease(id, false).then(setLease);
     fetchMoveOutCondition(id).then(setMoveOut);
     fetchDisputeRulingsForLease(id).then(setRulings);
     fetchConstitution().then(setConstitution);
@@ -71,7 +73,7 @@ export default function LeaseRecordPage() {
   }, [id]);
 
   useEffect(() => {
-    getLeaseActivity(id).then(async (items) => {
+    fetchActivityFeedForLease(id).then(async (items) => {
       setActivity(items);
       const releaseHashes = items.filter((i) => i.type === "release" && i.txHash).map((i) => i.txHash as string);
       if (releaseHashes.length) setSenders(await getTransactionSenders(releaseHashes));
@@ -95,7 +97,7 @@ export default function LeaseRecordPage() {
     return (
       <div className="mx-auto max-w-xl px-6 py-16 text-center">
         <p className="text-ink-muted">Couldn&apos;t load this lease — it may be a temporary network hiccup.</p>
-        <Button variant="secondary" className="mt-4" onClick={() => getLease(id, true).then(setLease)}>
+        <Button variant="secondary" className="mt-4" onClick={() => getLease(id, false).then(setLease)}>
           Try again
         </Button>
       </div>
@@ -120,7 +122,8 @@ export default function LeaseRecordPage() {
   const totalReleased = lease.amountPerPeriod * lease.periodsReleased;
   const totalEscrowed = lease.amountPerPeriod * lease.totalPeriods + lease.cautionAmount;
   const condition = listing?.condition ?? null;
-  const hadDisputes = lease.resolvedDisputes.length > 0 || activity.some((i) => i.type === "dispute-raised");
+  const resolvedDisputes = activity.filter((i) => i.type === "dispute-resolved").sort((a, b) => a.timestamp - b.timestamp);
+  const hadDisputes = resolvedDisputes.length > 0 || activity.some((i) => i.type === "dispute-raised");
 
   const usd = (n: number) => `${n.toFixed(2)} USDC`;
 
@@ -304,18 +307,22 @@ export default function LeaseRecordPage() {
             <p className="mt-2 text-sm text-ink-soft">No disputes were raised during this lease.</p>
           ) : (
             <div className="mt-3 flex flex-col gap-3">
-              {lease.resolvedDisputes.map((d, i) => {
-                const ruling = rulings.find((r) => r.resolvedAt === d.resolvedAt);
+              {resolvedDisputes.map((d, i) => {
+                const bps = d.landlordBps ?? null;
+                const ruling = rulings.find((r) => Math.abs(toSec(r.resolvedAt) - toSec(d.timestamp)) <= 120);
                 const outcome =
-                  d.landlordBps === 10000
-                    ? "Resolved in the landlord's favour — schedule resumed"
-                    : d.landlordBps === 0
-                      ? "Resolved in the tenant's favour — remaining escrow refunded"
-                      : `Split ${(d.landlordBps / 100).toFixed(0)}% landlord / ${(100 - d.landlordBps / 100).toFixed(0)}% tenant`;
+                  bps == null
+                    ? "Resolved."
+                    : bps >= 10000
+                      ? "Resolved in the landlord's favour — schedule resumed"
+                      : bps === 0
+                        ? "Resolved in the tenant's favour — remaining escrow refunded"
+                        : `Split ${(bps / 100).toFixed(0)}% landlord / ${(100 - bps / 100).toFixed(0)}% tenant`;
                 return (
-                  <div key={i} className="rounded-md border border-forest-100 p-3">
+                  <div key={d.id ?? i} className="rounded-md border border-forest-100 p-3">
                     <p className="text-sm font-medium text-ink">
-                      Dispute resolved {formatDate(new Date(d.resolvedAt))} · {d.resolutionType}
+                      Dispute resolved {formatDate(new Date(d.timestamp))}
+                      {d.resolutionType && ` · ${d.resolutionType}`}
                     </p>
                     <p className="mt-1 text-sm text-ink-muted">{outcome}</p>
                     {ruling?.reasoning && (
@@ -324,7 +331,7 @@ export default function LeaseRecordPage() {
                   </div>
                 );
               })}
-              {lease.resolvedDisputes.length === 0 && (
+              {resolvedDisputes.length === 0 && (
                 <p className="text-sm text-ink-soft">A dispute was raised on this lease. See the activity log above.</p>
               )}
             </div>
