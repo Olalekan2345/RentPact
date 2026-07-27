@@ -14,6 +14,26 @@ import { envResult } from "@/lib/env";
  * can keep using Promise.all naturally), and retries with a short pause if a
  * limit error still slips through.
  */
+// Arc signals its rate limit as JSON-RPC code -32011, but viem surfaces the
+// "request limit reached" text inconsistently — sometimes in `.message`, often
+// only in `.details`/`.cause`/`.metaMessages`. Match on all of them plus the
+// code so a limited request is always retried, never thrown to the UI.
+function isRateLimited(err: unknown): boolean {
+  const e = err as {
+    code?: number;
+    message?: string;
+    details?: string;
+    shortMessage?: string;
+    metaMessages?: string[];
+    cause?: { code?: number; message?: string };
+  };
+  if (e?.code === -32011 || e?.cause?.code === -32011) return true;
+  const blob = [e?.message, e?.details, e?.shortMessage, e?.cause?.message, ...(e?.metaMessages ?? [])]
+    .filter(Boolean)
+    .join(" ");
+  return /request limit reached/i.test(blob);
+}
+
 function arcFriendly(base: Transport): Transport {
   let tail: Promise<void> = Promise.resolve();
   return (config) => {
@@ -26,8 +46,7 @@ function arcFriendly(base: Transport): Transport {
           try {
             return await originalRequest(params);
           } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            if (attempt < 4 && message.includes("request limit reached")) {
+            if (attempt < 8 && isRateLimited(err)) {
               await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
               continue;
             }

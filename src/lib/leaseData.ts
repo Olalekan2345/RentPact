@@ -338,7 +338,12 @@ export async function releaseTranche(id: string, callerAddress: Address): Promis
         description: `releaseTranche(${id})`,
       });
       releaseHash = hash;
-      return onChainLeaseToLease(leaseId, true);
+      // withHistory:false — a release only needs the updated core lease
+      // (periodsReleased from readLease). withHistory here would fire
+      // dispute/caution eth_getLogs scans that can trip Arc's rate limit and
+      // throw *after* the release already landed, surfacing a scary error for a
+      // release that actually succeeded. The page reloads via refresh() anyway.
+      return onChainLeaseToLease(leaseId, false);
     }
     return mockStore.releaseTranche(id);
   })();
