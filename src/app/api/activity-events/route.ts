@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   recordActivityEvent,
-  getActivityFeedForAddress,
   getActivityFeedForLease,
+  getActivityFeedForLeaseIds,
+  getLeaseIdsForAddress,
   type ActivityType,
   type ResolutionType,
 } from "@/lib/activityEventServer";
+import { reconcileReleasesFromChain } from "@/lib/activityReconcileServer";
 
 const VALID_TYPES: ActivityType[] = [
   "deposit",
@@ -28,6 +30,8 @@ export async function GET(req: NextRequest) {
   const leaseId = req.nextUrl.searchParams.get("leaseId");
 
   if (leaseId) {
+    // Self-heal any releases the client failed to record, then read.
+    await reconcileReleasesFromChain([leaseId]);
     const events = await getActivityFeedForLease(leaseId);
     return NextResponse.json({ events });
   }
@@ -36,7 +40,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "address or leaseId query param is required" }, { status: 400 });
   }
   const limit = Number(req.nextUrl.searchParams.get("limit") ?? "50");
-  const events = await getActivityFeedForAddress(address, limit);
+  const leaseIds = await getLeaseIdsForAddress(address);
+  await reconcileReleasesFromChain(leaseIds);
+  const events = await getActivityFeedForLeaseIds(leaseIds, limit);
   return NextResponse.json({ events });
 }
 

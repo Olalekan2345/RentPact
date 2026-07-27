@@ -88,23 +88,27 @@ export async function getActivityFeedForLease(leaseId: string): Promise<Activity
   return (data ?? []).map(fromRow);
 }
 
-export async function getActivityFeedForAddress(address: string, limit: number): Promise<ActivityEvent[]> {
+/** Lease ids this address is a party to (tenant or landlord). */
+export async function getLeaseIdsForAddress(address: string): Promise<string[]> {
   const normalized = address.trim().toLowerCase();
-
-  const { data: leaseRows } = await supabaseAdmin()
+  const { data } = await supabaseAdmin()
     .from("lease_metadata")
     .select("lease_id")
     .or(`tenant_address.eq.${normalized},landlord_address.eq.${normalized}`);
+  return (data ?? []).map((r) => r.lease_id);
+}
 
-  const leaseIds = (leaseRows ?? []).map((r) => r.lease_id);
+export async function getActivityFeedForLeaseIds(leaseIds: string[], limit: number): Promise<ActivityEvent[]> {
   if (leaseIds.length === 0) return [];
-
   const { data } = await supabaseAdmin()
     .from("activity_events")
     .select()
     .in("lease_id", leaseIds)
     .order("timestamp", { ascending: false })
     .limit(limit);
-
   return (data ?? []).map(fromRow);
+}
+
+export async function getActivityFeedForAddress(address: string, limit: number): Promise<ActivityEvent[]> {
+  return getActivityFeedForLeaseIds(await getLeaseIdsForAddress(address), limit);
 }
