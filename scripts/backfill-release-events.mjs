@@ -35,8 +35,14 @@ if (!supabaseUrl || !supabaseKey || !escrow) {
 
 const APPLY = process.argv.includes("--apply");
 const USDC_DECIMALS = 6;
-// keccak256("TrancheReleased(uint256,uint256,uint256,uint256)")
-const TRANCHE_RELEASED_TOPIC = "0x93be08d1fbf976af717307eec845a2147837d5eed255f8715e35898336f9e4d8";
+// Money events to reconstruct. `amountWord` is the index of the 32-byte data
+// word holding the USDC amount (base units).
+//   TrancheReleased(leaseId, periodsReleased, amountReleased, totalReleased)
+//   CautionReleased(leaseId, amount)
+const HEALED_EVENTS = {
+  "0x93be08d1fbf976af717307eec845a2147837d5eed255f8715e35898336f9e4d8": { type: "release", amountWord: 1 },
+  "0x8af2865f2fb26a4160828c0c4b6831c26360e12a69fa9193331a59d7fbc7ad47": { type: "caution-released", amountWord: 0 },
+};
 
 const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
 
@@ -68,18 +74,18 @@ async function main() {
   console.log(APPLY ? ">>> APPLY MODE — rows WILL be written.\n" : ">>> DRY RUN — nothing will be written.\n");
 
   const logs = await fetchAllLogs();
-  const releases = logs.filter((l) => (l.topics?.[0] ?? "").toLowerCase() === TRANCHE_RELEASED_TOPIC);
-  console.log(`Fetched ${logs.length} contract logs · ${releases.length} TrancheReleased.\n`);
+  const healable = logs.filter((l) => HEALED_EVENTS[(l.topics?.[0] ?? "").toLowerCase()]);
+  console.log(`Fetched ${logs.length} contract logs · ${healable.length} healable money events.\n`);
 
-  // Group parsed releases by lease id (topic[1] = indexed leaseId).
+  // Group parsed events by lease id (topic[1] = indexed leaseId).
   const byLease = new Map();
-  for (const l of releases) {
+  for (const l of healable) {
+    const spec = HEALED_EVENTS[l.topics[0].toLowerCase()];
     const leaseId = BigInt(l.topics[1]).toString();
-    const amountBase = word(l.data, 1); // (periodsReleased, amountReleased, totalPeriodsReleased)
-    const amount = Number(amountBase) / 10 ** USDC_DECIMALS;
+    const amount = Number(word(l.data, spec.amountWord)) / 10 ** USDC_DECIMALS;
     const txHash = l.transaction_hash;
     const timestamp = Date.parse(l.block_timestamp);
-    const row = { id: `${txHash}-release`, lease_id: leaseId, type: "release", timestamp, amount, tx_hash: txHash, landlord_bps: null, resolution_type: null };
+    const row = { id: `${txHash}-${spec.type}`, lease_id: leaseId, type: spec.type, timestamp, amount, tx_hash: txHash, landlord_bps: null, resolution_type: null };
     if (!byLease.has(leaseId)) byLease.set(leaseId, []);
     byLease.get(leaseId).push(row);
   }
@@ -101,9 +107,9 @@ async function main() {
     totalInserted += missing.length;
 
     const orphan = knownLeaseIds.has(leaseId) ? "" : "  [!] no lease_metadata row — won't map to an address feed";
-    console.log(`Lease ${leaseId}: ${rows.length} release tx on-chain · ${rows.length - missing.length} already in feed · ${missing.length} to backfill${orphan}`);
+    console.log(`Lease ${leaseId}: ${rows.length} money event(s) on-chain · ${rows.length - missing.length} already in feed · ${missing.length} to backfill${orphan}`);
     for (const r of missing.sort((a, b) => a.timestamp - b.timestamp)) {
-      console.log(`    + ${r.amount.toFixed(2)} USDC  ${new Date(r.timestamp).toISOString().slice(0, 10)}  ${r.tx_hash}`);
+      console.log(`    + ${r.type} ${r.amount.toFixed(2)} USDC  ${new Date(r.timestamp).toISOString().slice(0, 10)}  ${r.tx_hash}`);
     }
 
     if (APPLY && missing.length) {

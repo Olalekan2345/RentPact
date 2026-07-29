@@ -16,7 +16,14 @@ import {
   type Lease,
 } from "@/lib/leaseData";
 
-const MONEY_TYPES: ActivityItem["type"][] = ["deposit", "release", "dispute-resolved", "cancelled"];
+const MONEY_TYPES: ActivityItem["type"][] = [
+  "deposit",
+  "release",
+  "dispute-resolved",
+  "cancelled",
+  "caution-released",
+  "caution-claim-resolved",
+];
 
 type RowType = ActivityItem["type"] | "withdrawal";
 
@@ -24,6 +31,7 @@ const TYPE_FILTERS: { value: RowType | "all"; label: string }[] = [
   { value: "all", label: "All types" },
   { value: "deposit", label: "Deposits" },
   { value: "release", label: "Releases" },
+  { value: "caution-released", label: "Caution returned" },
   { value: "dispute-resolved", label: "Refunds" },
   { value: "cancelled", label: "Cancellations" },
   { value: "withdrawal", label: "Withdrawals" },
@@ -73,6 +81,14 @@ function describeMoneyEvent(item: ActivityItem, role: "tenant" | "landlord" | nu
     return role === "landlord"
       ? { label: "Lease cancelled — tenant refunded", direction: "neutral" as const }
       : { label: "Lease cancelled — refunded", direction: "in" as const };
+  }
+  if (item.type === "caution-released") {
+    return role === "landlord"
+      ? { label: "Caution fee returned to tenant", direction: "neutral" as const }
+      : { label: "Caution fee returned", direction: "in" as const };
+  }
+  if (item.type === "caution-claim-resolved") {
+    return { label: "Caution claim resolved", direction: "neutral" as const };
   }
   return { label: item.type, direction: "neutral" as const };
 }
