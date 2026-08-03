@@ -782,19 +782,40 @@ export async function releaseCaution(id: string, callerAddress: Address): Promis
  * an id that doesn't exist, so almost every null in practice was actually
  * a network blip, not a real 404.
  */
+/**
+ * True for errors worth retrying — Arc's rate limit (-32011) and network
+ * blips. A contract revert like LeaseNotFound is deterministic, so we bail
+ * immediately instead of retrying a lease that genuinely doesn't exist.
+ */
+function isRetryableReadError(err: unknown): boolean {
+  const e = err as {
+    code?: number;
+    message?: string;
+    details?: string;
+    shortMessage?: string;
+    cause?: { code?: number; message?: string };
+  };
+  if (e?.code === -32011 || e?.cause?.code === -32011) return true;
+  const blob = [e?.message, e?.details, e?.shortMessage, e?.cause?.message].filter(Boolean).join(" ");
+  return /request limit reached|timed out|timeout|fetch failed|failed to fetch|network|socket hang up|ECONN/i.test(blob);
+}
+
 export async function getLease(id: string, withHistory: boolean): Promise<Lease | null> {
   if (!MOCK_MODE) {
-    for (let attempt = 0; attempt < 3; attempt++) {
+    const MAX_ATTEMPTS = 5;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       try {
         return await cachedChainRead(`lease:${id}:${withHistory ? "full" : "light"}`, () =>
           onChainLeaseToLease(BigInt(id), withHistory),
         );
       } catch (err) {
-        if (attempt === 2) {
-          console.error(`Could not load lease ${id} after retries:`, err);
+        // Give up now on the last try, or on a non-transient error (e.g. the
+        // lease truly doesn't exist) — no point retrying a deterministic revert.
+        if (attempt === MAX_ATTEMPTS - 1 || !isRetryableReadError(err)) {
+          console.error(`Could not load lease ${id}:`, err);
           return null;
         }
-        await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+        await new Promise((resolve) => setTimeout(resolve, Math.min(500 * 2 ** attempt, 4000)));
       }
     }
     return null;
