@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
-import { Card, CardContent, Skeleton } from "@/components/ui";
+import { Card, CardContent, Skeleton, Toggle } from "@/components/ui";
 import { fetchPrivacyPrefs, updatePrivacyPrefs, type PrivacyPrefs } from "@/lib/privacy";
 
 const ROWS: { key: keyof PrivacyPrefs; label: string; helper: string }[] = [
@@ -58,20 +58,7 @@ export default function PrivacySettingsPage() {
                   <p className="text-sm font-medium text-ink">{row.label}</p>
                   <p className="text-xs text-ink-soft">{row.helper}</p>
                 </div>
-                <button
-                  role="switch"
-                  aria-checked={prefs[row.key]}
-                  onClick={() => toggle(row.key)}
-                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                    prefs[row.key] ? "bg-forest-500" : "bg-cream-400"
-                  }`}
-                >
-                  <span
-                    className={`absolute top-1 h-4 w-4 rounded-full bg-cream-50 transition-transform ${
-                      prefs[row.key] ? "translate-x-6" : "translate-x-1"
-                    }`}
-                  />
-                </button>
+                <Toggle checked={prefs[row.key]} onChange={() => toggle(row.key)} label={row.label} />
               </div>
             ))
           )}

@@ -6,3 +6,4 @@ export { SegmentedControl, type SegmentedControlOption } from "./SegmentedContro
 export { Skeleton, SkeletonText } from "./Skeleton";
 export { CountUp } from "./CountUp";
 export { ArrowLink } from "./ArrowLink";
+export { Toggle, type ToggleProps } from "./Toggle";
