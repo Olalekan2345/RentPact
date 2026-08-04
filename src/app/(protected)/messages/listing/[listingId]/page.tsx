@@ -8,7 +8,8 @@ import { PropertyImage } from "@/components/PropertyImage";
 import { Button, Skeleton } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 import { fetchListing, type Listing } from "@/lib/listings";
-import { fetchListingThread, sendListingInquiry, markThreadRead, type Message } from "@/lib/messages";
+import { fetchListingThread, sendListingInquiry, sendMediaMessage, markThreadRead, type Message } from "@/lib/messages";
+import { useAttachments, AttachButton, AttachmentPreviews, MessageAttachments } from "@/components/message/attachments";
 
 export default function ListingInquiryPage() {
   const { listingId } = useParams<{ listingId: string }>();
@@ -42,6 +43,8 @@ export default function ListingInquiryPage() {
     const msgs = await fetchListingThread(listingId, session.email, counterpartyEmail);
     setMessages(msgs);
   }, [session, listingId, counterpartyEmail]);
+
+  const attachments = useAttachments();
 
   useEffect(() => {
     if (!session || !counterpartyEmail) return;
@@ -80,11 +83,17 @@ export default function ListingInquiryPage() {
 
   const handleSend = async (e: FormEvent) => {
     e.preventDefault();
-    if (!text.trim()) return;
+    if (!text.trim() && attachments.pending.length === 0) return;
     setSending(true);
     try {
-      await sendListingInquiry({ listingId, fromEmail: session.email, toEmail: counterpartyEmail, text: text.trim() });
+      const common = { listingId, fromEmail: session.email, toEmail: counterpartyEmail, text: text.trim() };
+      if (attachments.pending.length > 0) {
+        await sendMediaMessage({ ...common, attachments: attachments.pending });
+      } else {
+        await sendListingInquiry(common);
+      }
       setText("");
+      attachments.clear();
       await refresh();
     } finally {
       setSending(false);
@@ -123,9 +132,12 @@ export default function ListingInquiryPage() {
                 const isOwn = m.fromEmail === session.email;
                 return (
                   <div key={m.id} className={`flex max-w-[85%] flex-col gap-1 ${isOwn ? "items-end self-end" : "items-start self-start"}`}>
-                    <div className={`w-fit rounded-lg px-3 py-2 text-sm ${isOwn ? "bg-forest-500 text-cream-50" : "bg-cream-200 text-ink"}`}>
-                      {m.text}
-                    </div>
+                    {m.attachments.length > 0 && <MessageAttachments attachments={m.attachments} />}
+                    {m.text && (
+                      <div className={`w-fit rounded-lg px-3 py-2 text-sm ${isOwn ? "bg-forest-500 text-cream-50" : "bg-cream-200 text-ink"}`}>
+                        {m.text}
+                      </div>
+                    )}
                     <span className="px-1 text-[11px] text-ink-soft">
                       {formatDate(new Date(m.createdAt), "long")}
                       {isOwn && <> · {m.readAt ? `Read ${formatDate(new Date(m.readAt), "long")}` : "Sent"}</>}
@@ -146,18 +158,27 @@ export default function ListingInquiryPage() {
           </Link>
         )}
 
-        <form onSubmit={handleSend} className="flex gap-2 border-t border-forest-100 pt-3">
-          <input
-            type="text"
-            placeholder="Ask about the property…"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            className="h-11 flex-1 rounded-md border border-forest-100 bg-cream-50 px-4 text-sm text-ink focus:border-forest-400 focus:outline-none focus:ring-2 focus:ring-forest-100"
+        <div className="border-t border-forest-100 pt-3">
+          <AttachmentPreviews
+            pending={attachments.pending}
+            uploading={attachments.uploading}
+            error={attachments.error}
+            onRemove={attachments.remove}
           />
-          <Button type="submit" disabled={sending || !text.trim()}>
-            Send
-          </Button>
-        </form>
+          <form onSubmit={handleSend} className="flex gap-2">
+            <AttachButton onFiles={attachments.addFiles} disabled={sending} />
+            <input
+              type="text"
+              placeholder="Ask about the property…"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              className="h-11 flex-1 rounded-md border border-forest-100 bg-cream-50 px-4 text-sm text-ink focus:border-forest-400 focus:outline-none focus:ring-2 focus:ring-forest-100"
+            />
+            <Button type="submit" disabled={sending || attachments.uploading || (!text.trim() && attachments.pending.length === 0)}>
+              Send
+            </Button>
+          </form>
+        </div>
       </div>
   );
 }

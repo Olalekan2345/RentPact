@@ -52,6 +52,7 @@ type MessagesRow = {
   created_at: number;
   read_at: number | null;
   maintenance: unknown | null;
+  attachments: unknown;
 };
 
 type NotificationPrefsRow = {

@@ -37,6 +37,15 @@ export interface MaintenanceDetails {
   resolvedAt: number | null;
 }
 
+export type AttachmentKind = "image" | "video" | "file";
+
+export interface Attachment {
+  url: string;
+  name: string;
+  contentType: string;
+  kind: AttachmentKind;
+}
+
 export interface Message {
   id: string;
   leaseId: string | null;
@@ -48,6 +57,7 @@ export interface Message {
   createdAt: number;
   readAt: number | null;
   maintenance: MaintenanceDetails | null;
+  attachments: Attachment[];
 }
 
 export interface Thread {
@@ -71,6 +81,7 @@ function fromRow(row: {
   created_at: number;
   read_at: number | null;
   maintenance: unknown;
+  attachments?: unknown;
 }): Message {
   return {
     id: row.id,
@@ -83,6 +94,7 @@ function fromRow(row: {
     createdAt: row.created_at,
     readAt: row.read_at,
     maintenance: row.maintenance as MaintenanceDetails | null,
+    attachments: Array.isArray(row.attachments) ? (row.attachments as Attachment[]) : [],
   };
 }
 
@@ -176,20 +188,29 @@ export async function createMessage(input: Omit<Message, "id" | "createdAt" | "r
   if (!input.leaseId && !input.listingId) throw new Error("A message needs a leaseId or listingId");
   const message: Message = { ...input, id: crypto.randomUUID(), createdAt: Date.now(), readAt: null };
 
-  const { error } = await supabaseAdmin()
-    .from("messages")
-    .insert({
-      id: message.id,
-      lease_id: message.leaseId,
-      listing_id: message.listingId,
-      from_email: message.fromEmail,
-      to_email: message.toEmail,
-      type: message.type,
-      text: message.text,
-      created_at: message.createdAt,
-      read_at: message.readAt,
-      maintenance: message.maintenance,
-    });
+  const row = {
+    id: message.id,
+    lease_id: message.leaseId,
+    listing_id: message.listingId,
+    from_email: message.fromEmail,
+    to_email: message.toEmail,
+    type: message.type,
+    text: message.text,
+    created_at: message.createdAt,
+    read_at: message.readAt,
+    maintenance: message.maintenance,
+    attachments: message.attachments,
+  };
+
+  let { error } = await supabaseAdmin().from("messages").insert(row);
+  if (error && /attachments/i.test(error.message ?? "")) {
+    // The attachments column (migration 0008) hasn't been applied yet — persist
+    // the message without it so messaging keeps working. Attachments start
+    // saving automatically once the migration is run.
+    const legacy = { ...row };
+    delete (legacy as { attachments?: unknown }).attachments;
+    ({ error } = await supabaseAdmin().from("messages").insert(legacy));
+  }
   if (error) throw error;
 
   return message;

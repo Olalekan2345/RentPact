@@ -19,6 +19,15 @@ export interface MaintenanceDetails {
   resolvedAt: number | null;
 }
 
+export type AttachmentKind = "image" | "video" | "file";
+
+export interface Attachment {
+  url: string;
+  name: string;
+  contentType: string;
+  kind: AttachmentKind;
+}
+
 export interface Message {
   id: string;
   leaseId: string | null;
@@ -30,6 +39,7 @@ export interface Message {
   createdAt: number;
   readAt: number | null;
   maintenance: MaintenanceDetails | null;
+  attachments: Attachment[];
 }
 
 export interface Thread {
@@ -92,6 +102,22 @@ export async function sendListingInquiry(input: {
   fromEmail: string;
   toEmail: string;
   text: string;
+}): Promise<Message> {
+  return postMessage({ ...input, type: "text" });
+}
+
+/**
+ * A message carrying media/file attachments (with an optional text caption).
+ * Works for both lease and listing threads — pass whichever id applies.
+ * Attachments must already be uploaded (see useAttachments / uploadImage).
+ */
+export async function sendMediaMessage(input: {
+  leaseId?: string;
+  listingId?: string;
+  fromEmail: string;
+  toEmail: string;
+  text: string;
+  attachments: Attachment[];
 }): Promise<Message> {
   return postMessage({ ...input, type: "text" });
 }

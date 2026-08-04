@@ -22,6 +22,7 @@ import { getLease, type Lease } from "@/lib/leaseData";
 import {
   fetchThread,
   sendTextMessage,
+  sendMediaMessage,
   sendMaintenanceRequest,
   sendPaymentReminder,
   markThreadRead,
@@ -31,6 +32,7 @@ import {
   type MaintenanceCategory,
   type MaintenanceStatus,
 } from "@/lib/messages";
+import { useAttachments, AttachButton, AttachmentPreviews, MessageAttachments } from "@/components/message/attachments";
 
 const CATEGORY_OPTIONS: { value: MaintenanceCategory; label: string }[] = [
   { value: "plumbing", label: "Plumbing" },
@@ -97,6 +99,8 @@ export default function MessageThreadPage() {
     setMessages(msgs);
   }, [leaseId]);
 
+  const attachments = useAttachments();
+
   useEffect(() => {
     getLease(leaseId, false).then(setLease);
   }, [leaseId]);
@@ -138,11 +142,17 @@ export default function MessageThreadPage() {
 
   const handleSend = async (e: FormEvent) => {
     e.preventDefault();
-    if (!text.trim()) return;
+    if (!text.trim() && attachments.pending.length === 0) return;
     setSending(true);
     try {
-      await sendTextMessage({ leaseId, fromEmail: session.email, toEmail: counterpartyEmail, text: text.trim() });
+      const common = { leaseId, fromEmail: session.email, toEmail: counterpartyEmail, text: text.trim() };
+      if (attachments.pending.length > 0) {
+        await sendMediaMessage({ ...common, attachments: attachments.pending });
+      } else {
+        await sendTextMessage(common);
+      }
       setText("");
+      attachments.clear();
       await refresh();
     } finally {
       setSending(false);
@@ -429,18 +439,27 @@ export default function MessageThreadPage() {
           </Button>
         </div>
 
-        <form onSubmit={handleSend} className="flex gap-2 border-t border-forest-100 pt-3">
-          <input
-            type="text"
-            placeholder="Write a message…"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            className="h-11 flex-1 rounded-md border border-forest-100 bg-cream-50 px-4 text-sm text-ink focus:border-forest-400 focus:outline-none focus:ring-2 focus:ring-forest-100"
+        <div className="border-t border-forest-100 pt-3">
+          <AttachmentPreviews
+            pending={attachments.pending}
+            uploading={attachments.uploading}
+            error={attachments.error}
+            onRemove={attachments.remove}
           />
-          <Button type="submit" disabled={sending || !text.trim()}>
-            Send
-          </Button>
-        </form>
+          <form onSubmit={handleSend} className="flex gap-2">
+            <AttachButton onFiles={attachments.addFiles} disabled={sending} />
+            <input
+              type="text"
+              placeholder="Write a message…"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              className="h-11 flex-1 rounded-md border border-forest-100 bg-cream-50 px-4 text-sm text-ink focus:border-forest-400 focus:outline-none focus:ring-2 focus:ring-forest-100"
+            />
+            <Button type="submit" disabled={sending || attachments.uploading || (!text.trim() && attachments.pending.length === 0)}>
+              Send
+            </Button>
+          </form>
+        </div>
       </div>
   );
 }
@@ -551,7 +570,8 @@ function MessageBubble({
 
   return (
     <div className={`flex max-w-[85%] flex-col gap-1 ${bubbleAlign}`}>
-      <div className={`w-fit rounded-lg px-3 py-2 text-sm ${bubbleColor}`}>{message.text}</div>
+      {message.attachments.length > 0 && <MessageAttachments attachments={message.attachments} />}
+      {message.text && <div className={`w-fit rounded-lg px-3 py-2 text-sm ${bubbleColor}`}>{message.text}</div>}
       <MessageMeta message={message} isOwn={isOwn} />
     </div>
   );
