@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
-import { DashboardIcon, LeasesIcon, BrowseIcon, ListPropertyIcon, MessagesIcon, WalletIcon, ProfileIcon, SettingsIcon, DisputeIcon } from "@/components/icons/NavIcons";
+import { DashboardIcon, LeasesIcon, BrowseIcon, ListPropertyIcon, MessagesIcon, WalletIcon, ProfileIcon, SettingsIcon, DisputeIcon, HelpIcon } from "@/components/icons/NavIcons";
 import { NotificationBell } from "@/components/NotificationBell";
 import { LogoMark } from "@/components/Logo";
 
@@ -69,6 +69,18 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="mt-auto flex flex-col gap-1 border-t border-cream-50/10 pt-4">
           <p className="truncate px-2 pb-2 text-xs text-cream-100/60">{session.email}</p>
           <Link
+            href="/contact"
+            className={cn(
+              "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
+              pathname === "/contact"
+                ? "bg-forest-600 text-cream-50"
+                : "text-cream-100/70 hover:bg-forest-600/60 hover:text-cream-50",
+            )}
+          >
+            <HelpIcon className="h-[18px] w-[18px] shrink-0" />
+            Help &amp; Contact
+          </Link>
+          <Link
             href="/settings/account"
             className={cn(
               "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
@@ -97,6 +109,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Link>
         <div className="flex items-center gap-1">
           <NotificationBell email={session.email} address={session.address} />
+          <Link
+            href="/contact"
+            aria-label="Help & Contact"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-ink-muted hover:bg-cream-300"
+          >
+            <HelpIcon className="h-5 w-5" />
+          </Link>
           <Link
             href="/settings/account"
             aria-label="Settings"

@@ -70,9 +70,22 @@ export function FinalCtaSection() {
 
       <footer className="relative border-t border-cream/10 px-4 py-8 text-center text-xs text-cream-200/60 sm:px-8">
         <p>RentPact runs on Arc testnet. Not for real funds.</p>
-        <Link href="/constitution" className="mt-2 inline-block underline decoration-cream/30 underline-offset-4 hover:text-cream-100">
-          Read the Lease Constitution
-        </Link>
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+          <Link href="/contact" className="underline decoration-cream/30 underline-offset-4 hover:text-cream-100">
+            Contact us
+          </Link>
+          <a
+            href="https://x.com/RentPact"
+            target="_blank"
+            rel="noreferrer"
+            className="underline decoration-cream/30 underline-offset-4 hover:text-cream-100"
+          >
+            @RentPact on X
+          </a>
+          <Link href="/constitution" className="underline decoration-cream/30 underline-offset-4 hover:text-cream-100">
+            Read the Lease Constitution
+          </Link>
+        </div>
       </footer>
     </section>
   );
