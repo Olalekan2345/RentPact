@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { PropertyImage } from "@/components/PropertyImage";
 import { Badge, Button, Skeleton } from "@/components/ui";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatUSDC } from "@/lib/format";
 import { uploadImage, uploadFile } from "@/lib/image";
 import { CONDITION_AREAS, type ConditionAreaKey } from "@/lib/condition";
 import {
@@ -562,6 +562,24 @@ function MessageBubble({
       <div className={`flex max-w-[85%] flex-col gap-1 ${bubbleAlign}`}>
         <div className="w-full rounded-lg border border-gold-200 bg-gold-50 px-3 py-2 text-sm text-gold-700">
           🔔 {message.text}
+        </div>
+        <MessageMeta message={message} isOwn={isOwn} />
+      </div>
+    );
+  }
+
+  if (message.repairCreditAmount != null) {
+    return (
+      <div className={`flex max-w-[85%] flex-col gap-1 ${bubbleAlign}`}>
+        <div className="w-full rounded-lg border border-gold-200 bg-gold-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gold-700">🧾 Repair credit requested</p>
+          <p className="mt-1 text-sm font-semibold text-ink">{formatUSDC(message.repairCreditAmount)} USDC</p>
+          {message.text && <p className="mt-1 text-sm text-ink-muted">{message.text}</p>}
+          {message.attachments.length > 0 && (
+            <div className="mt-2">
+              <MessageAttachments attachments={message.attachments} />
+            </div>
+          )}
         </div>
         <MessageMeta message={message} isOwn={isOwn} />
       </div>

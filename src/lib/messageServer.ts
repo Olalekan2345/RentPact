@@ -58,6 +58,8 @@ export interface Message {
   readAt: number | null;
   maintenance: MaintenanceDetails | null;
   attachments: Attachment[];
+  /** Set only on a tenant's repair-credit request (Article 4.6): the USDC amount requested. */
+  repairCreditAmount: number | null;
 }
 
 export interface Thread {
@@ -82,6 +84,7 @@ function fromRow(row: {
   read_at: number | null;
   maintenance: unknown;
   attachments?: unknown;
+  repair_credit_amount?: unknown;
 }): Message {
   return {
     id: row.id,
@@ -95,6 +98,7 @@ function fromRow(row: {
     readAt: row.read_at,
     maintenance: row.maintenance as MaintenanceDetails | null,
     attachments: Array.isArray(row.attachments) ? (row.attachments as Attachment[]) : [],
+    repairCreditAmount: typeof row.repair_credit_amount === "number" ? row.repair_credit_amount : null,
   };
 }
 
@@ -200,16 +204,22 @@ export async function createMessage(input: Omit<Message, "id" | "createdAt" | "r
     read_at: message.readAt,
     maintenance: message.maintenance,
     attachments: message.attachments,
+    repair_credit_amount: message.repairCreditAmount,
   };
 
+  // Self-heal if an optional column (migrations 0008 attachments, 0009
+  // repair_credit_amount) hasn't been applied yet: drop whichever column the
+  // error names and retry, so messaging never breaks in the window before a
+  // migration is run — those fields simply start persisting once it is.
+  const OPTIONAL_COLUMNS = ["attachments", "repair_credit_amount"] as const;
+  const mutable: Record<string, unknown> = { ...row };
   let { error } = await supabaseAdmin().from("messages").insert(row);
-  if (error && /attachments/i.test(error.message ?? "")) {
-    // The attachments column (migration 0008) hasn't been applied yet — persist
-    // the message without it so messaging keeps working. Attachments start
-    // saving automatically once the migration is run.
-    const legacy = { ...row };
-    delete (legacy as { attachments?: unknown }).attachments;
-    ({ error } = await supabaseAdmin().from("messages").insert(legacy));
+  for (let i = 0; error && i < OPTIONAL_COLUMNS.length; i++) {
+    const msg = error.message ?? "";
+    const missing = OPTIONAL_COLUMNS.find((c) => msg.includes(c) && c in mutable);
+    if (!missing) break;
+    delete mutable[missing];
+    ({ error } = await supabaseAdmin().from("messages").insert(mutable as typeof row));
   }
   if (error) throw error;
 

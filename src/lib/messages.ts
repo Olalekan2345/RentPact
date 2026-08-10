@@ -40,6 +40,8 @@ export interface Message {
   readAt: number | null;
   maintenance: MaintenanceDetails | null;
   attachments: Attachment[];
+  /** Set only on a tenant's repair-credit request (Article 4.6): the USDC amount requested. */
+  repairCreditAmount: number | null;
 }
 
 export interface Thread {
@@ -120,6 +122,23 @@ export async function sendMediaMessage(input: {
   attachments: Attachment[];
 }): Promise<Message> {
   return postMessage({ ...input, type: "text" });
+}
+
+/**
+ * A tenant's request for a repair credit of a specific USDC amount (Article
+ * 4.6), with an explanation and an optional receipt attached. The landlord
+ * sees the amount + receipt in the dispute panel and can approve & pay it
+ * on-chain in one click.
+ */
+export async function sendRepairCreditRequest(input: {
+  leaseId: string;
+  fromEmail: string;
+  toEmail: string;
+  amount: number;
+  text: string;
+  attachments: Attachment[];
+}): Promise<Message> {
+  return postMessage({ ...input, type: "text", repairCreditAmount: input.amount });
 }
 
 export async function sendMaintenanceRequest(input: {

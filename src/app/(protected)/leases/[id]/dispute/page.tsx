@@ -24,7 +24,8 @@ import {
 } from "@/lib/leaseData";
 import { fetchActivityFeedForLease, type ResolutionType } from "@/lib/activityEventStore";
 import { isArbiter } from "@/lib/contracts/rentPactEscrow";
-import { fetchThread, sendTextMessage, type Message } from "@/lib/messages";
+import { fetchThread, sendTextMessage, sendRepairCreditRequest, type Message } from "@/lib/messages";
+import { useAttachments, AttachButton, AttachmentPreviews, MessageAttachments } from "@/components/message/attachments";
 import { fetchListingIdForLease, fetchListing, type Listing } from "@/lib/listings";
 import { fetchDisputeRulingsForLease, type DisputeRulingRecord } from "@/lib/disputeRuling";
 import { checkTier0 } from "@/lib/tier0";
@@ -68,6 +69,9 @@ export default function DisputePanelPage() {
   const [constitutionOpen, setConstitutionOpen] = useState(false);
   const [repairCreditInput, setRepairCreditInput] = useState("");
   const [repairCreditError, setRepairCreditError] = useState<string | null>(null);
+  const [repairRequestAmount, setRepairRequestAmount] = useState("");
+  const [repairRequestNote, setRepairRequestNote] = useState("");
+  const repairReceipt = useAttachments();
 
   const refresh = useCallback(() => {
     // false: this page no longer needs the historical dispute/caution-claim
@@ -150,6 +154,13 @@ export default function DisputePanelPage() {
   const remainingFunds = lease.amountPerPeriod * (lease.totalPeriods - lease.periodsReleased);
   const ruling = lastResolution ? rulings.find((r) => r.resolvedAt === lastResolution.resolvedAt) ?? null : null;
 
+  // The tenant's most recent repair-credit request, shown to the landlord for
+  // one-click approval. Only relevant while nothing is offered yet.
+  const pendingRepairRequest =
+    lease.repairCreditHeld === 0
+      ? [...thread].reverse().find((m) => m.repairCreditAmount != null && m.fromEmail === lease.tenantEmail) ?? null
+      : null;
+
   const issueRef = parseIssueReference(lease.disputeReason);
   const issueMessage = issueRef ? thread.find((m) => m.id === issueRef.messageId) ?? null : null;
   const tier0 = issueMessage?.maintenance ? checkTier0(issueMessage.maintenance, sourceListing?.condition ?? null) : null;
@@ -209,6 +220,44 @@ export default function DisputePanelPage() {
       refresh();
     } catch (err) {
       setRepairCreditError(err instanceof Error ? err.message : "Could not offer the repair credit. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRequestRepairCredit = async () => {
+    const amount = Number(repairRequestAmount);
+    if (!amount || amount <= 0) return;
+    setBusy(true);
+    setRepairCreditError(null);
+    try {
+      await sendRepairCreditRequest({
+        leaseId: lease.id,
+        fromEmail: session.email,
+        toEmail: lease.landlordEmail,
+        amount,
+        text: repairRequestNote.trim() || `Requesting a repair credit of ${amount.toFixed(2)} USDC for a repair I paid for.`,
+        attachments: repairReceipt.pending,
+      });
+      setRepairRequestAmount("");
+      setRepairRequestNote("");
+      repairReceipt.clear();
+      refresh();
+    } catch (err) {
+      setRepairCreditError(err instanceof Error ? err.message : "Could not send your request. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleApproveRepairRequest = async (amount: number) => {
+    setBusy(true);
+    setRepairCreditError(null);
+    try {
+      await offerRepairCredit(lease.id, amount, session.address);
+      refresh();
+    } catch (err) {
+      setRepairCreditError(err instanceof Error ? err.message : "Could not approve the repair credit. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -480,6 +529,36 @@ export default function DisputePanelPage() {
                 </div>
               ) : role === "landlord" ? (
                 <div className="mt-4">
+                  {pendingRepairRequest && (
+                    <div className="mb-4 rounded-lg border border-gold-200 bg-gold-50 p-4">
+                      <p className="text-sm text-ink">
+                        🧾 The tenant requested a repair credit of{" "}
+                        <span className="font-semibold">
+                          {formatUSDC(pendingRepairRequest.repairCreditAmount ?? 0)} USDC
+                        </span>
+                        .
+                      </p>
+                      {pendingRepairRequest.text && (
+                        <p className="mt-1 text-sm text-ink-muted">{pendingRepairRequest.text}</p>
+                      )}
+                      {pendingRepairRequest.attachments.length > 0 && (
+                        <div className="mt-2">
+                          <MessageAttachments attachments={pendingRepairRequest.attachments} />
+                        </div>
+                      )}
+                      <Button
+                        className="mt-3"
+                        onClick={() => handleApproveRepairRequest(pendingRepairRequest.repairCreditAmount ?? 0)}
+                        disabled={busy}
+                      >
+                        Approve &amp; pay {formatUSDC(pendingRepairRequest.repairCreditAmount ?? 0)} USDC
+                      </Button>
+                      <p className="mt-2 text-xs text-ink-soft">
+                        Paid from your own wallet and held by the contract until the tenant accepts — or set a different
+                        amount below.
+                      </p>
+                    </div>
+                  )}
                   <label className="text-sm text-ink-muted">Credit to pay the tenant (USDC)</label>
                   <input
                     type="number"
@@ -504,10 +583,68 @@ export default function DisputePanelPage() {
                   </Button>
                 </div>
               ) : (
-                <p className="mt-3 text-sm text-ink-soft">
-                  The landlord can offer you a repair credit here — a direct payment that resolves this dispute and
-                  keeps the lease going on its normal schedule.
-                </p>
+                <div className="mt-4">
+                  {pendingRepairRequest ? (
+                    <div className="rounded-lg bg-forest-50 p-4">
+                      <p className="text-sm text-ink">
+                        You requested a repair credit of{" "}
+                        <span className="font-semibold">
+                          {formatUSDC(pendingRepairRequest.repairCreditAmount ?? 0)} USDC
+                        </span>{" "}
+                        — waiting for the landlord to approve it.
+                      </p>
+                      {pendingRepairRequest.attachments.length > 0 && (
+                        <div className="mt-2">
+                          <MessageAttachments attachments={pendingRepairRequest.attachments} />
+                        </div>
+                      )}
+                      <p className="mt-2 text-xs text-ink-soft">You can send an updated request below to replace it.</p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-ink-muted">
+                      Paid for a repair yourself? Request a repair credit — state the amount and attach the receipt. The
+                      landlord pays it from their own wallet, the dispute clears, and the lease keeps running on its
+                      normal schedule.
+                    </p>
+                  )}
+
+                  <label className="mt-4 block text-sm text-ink-muted">Repair cost (USDC)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="e.g. 3.00"
+                    value={repairRequestAmount}
+                    onChange={(e) => setRepairRequestAmount(e.target.value)}
+                    className="mt-2 h-11 w-full rounded-md border border-forest-100 bg-cream-50 px-4 text-[15px] text-ink focus:border-forest-400 focus:outline-none focus:ring-2 focus:ring-forest-100"
+                  />
+                  <textarea
+                    placeholder="What was the repair? (optional)"
+                    rows={2}
+                    value={repairRequestNote}
+                    onChange={(e) => setRepairRequestNote(e.target.value)}
+                    className="mt-2 w-full rounded-md border border-forest-100 bg-cream-50 px-4 py-2 text-sm text-ink focus:border-forest-400 focus:outline-none focus:ring-2 focus:ring-forest-100"
+                  />
+                  <div className="mt-2">
+                    <AttachmentPreviews
+                      pending={repairReceipt.pending}
+                      uploading={repairReceipt.uploading}
+                      error={repairReceipt.error}
+                      onRemove={repairReceipt.remove}
+                    />
+                    <div className="flex items-center gap-2">
+                      <AttachButton onFiles={repairReceipt.addFiles} disabled={busy} />
+                      <span className="text-xs text-ink-soft">Attach a receipt</span>
+                    </div>
+                  </div>
+                  <Button
+                    className="mt-3"
+                    onClick={handleRequestRepairCredit}
+                    disabled={busy || repairReceipt.uploading || !repairRequestAmount || Number(repairRequestAmount) <= 0}
+                  >
+                    {pendingRepairRequest ? "Send updated request" : "Request repair credit"}
+                  </Button>
+                </div>
               )}
 
               {repairCreditError && <p className="mt-3 text-sm text-terracotta-500">{repairCreditError}</p>}

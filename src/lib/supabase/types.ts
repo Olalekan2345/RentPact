@@ -53,6 +53,7 @@ type MessagesRow = {
   read_at: number | null;
   maintenance: unknown | null;
   attachments: unknown;
+  repair_credit_amount: number | null;
 };
 
 type NotificationPrefsRow = {

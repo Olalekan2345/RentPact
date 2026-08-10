@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { leaseId, listingId, fromEmail, toEmail, type, text, maintenance, attachments } = body;
+    const { leaseId, listingId, fromEmail, toEmail, type, text, maintenance, attachments, repairCreditAmount } = body;
 
     if (!leaseId && !listingId) {
       return NextResponse.json({ error: "leaseId or listingId is required" }, { status: 400 });
@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
       text: text ?? "",
       maintenance: maintenance ?? null,
       attachments: Array.isArray(attachments) ? attachments : [],
+      repairCreditAmount: typeof repairCreditAmount === "number" ? repairCreditAmount : null,
     });
     return NextResponse.json({ message });
   } catch (error) {
