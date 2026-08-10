@@ -62,6 +62,7 @@ export default function BrowseListingsPage() {
 function ListingCard({ listing }: { listing: Listing }) {
   const frequencyLabel =
     FREQUENCY_OPTIONS.find((f) => f.value === listing.frequency)?.label ?? listing.frequency;
+  const totalEscrow = listing.amountPerPeriod * listing.totalPeriods + (listing.securityDeposit ?? 0);
 
   return (
     <Link
@@ -88,6 +89,15 @@ function ListingCard({ listing }: { listing: Listing }) {
             {formatUSDC(listing.amountPerPeriod)} <span className="text-ink-soft">USDC / period</span>
           </span>
           <span className="text-ink-soft">{frequencyLabel}</span>
+        </div>
+        <div className="mt-3 flex items-center justify-between border-t border-forest-100/60 pt-3 text-xs">
+          <span className="text-ink-soft">
+            {listing.totalPeriods} period{listing.totalPeriods === 1 ? "" : "s"}
+          </span>
+          <span className="flex items-center gap-1 font-medium text-ink">
+            <UsdcIcon className="h-3 w-3 shrink-0" />
+            {formatUSDC(totalEscrow)} <span className="font-normal text-ink-soft">to escrow</span>
+          </span>
         </div>
       </div>
     </Link>
