@@ -4,9 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
-import { PropertyImage } from "@/components/PropertyImage";
 import { Badge, Button, Card, CardContent, Skeleton } from "@/components/ui";
-import { UsdcAmount } from "@/components/UsdcAmount";
 import { formatDate } from "@/lib/format";
 import { FREQUENCY_OPTIONS } from "@/lib/contracts/frequency";
 import {
@@ -212,45 +210,24 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
-        {/* My properties */}
+        {/* My properties — summary + link to a dedicated page so the profile stays compact */}
         <Card className="mt-6">
-          <CardContent className="pt-6">
-            <p className="text-sm font-semibold text-ink">My properties</p>
-            {myListings === null ? (
-              <Skeleton className="mt-3 h-16 w-full" />
-            ) : myListings.length === 0 ? (
-              <p className="mt-2 text-sm text-ink-soft">
-                You haven&apos;t listed anything yet.{" "}
-                <Link href="/listings/new" className="text-forest-500 underline">
-                  List a property
-                </Link>
+          <CardContent className="flex items-center justify-between gap-3 pt-6">
+            <div>
+              <p className="text-sm font-semibold text-ink">My properties</p>
+              <p className="mt-1 text-sm text-ink-muted">
+                {myListings === null
+                  ? "Loading…"
+                  : myListings.length === 0
+                    ? "You haven't listed anything yet."
+                    : `${myListings.filter((l) => l.active).length} live · ${myListings.length} total`}
               </p>
-            ) : (
-              <div className="mt-3 flex flex-col gap-2">
-                {myListings.map((listing) => (
-                  <Link
-                    key={listing.id}
-                    href={`/listings/${listing.id}`}
-                    className="flex items-center gap-3 rounded-md border border-forest-100 p-3 transition-colors hover:border-forest-200"
-                  >
-                    <PropertyImage
-                      seed={listing.id}
-                      propertyType={listing.propertyType}
-                      overrideUrl={listing.photoUrl}
-                      alt={listing.propertyAddress}
-                      className="h-12 w-12 shrink-0 rounded-md"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-ink">{listing.propertyAddress}</p>
-                      <p className="flex items-center gap-1 text-xs text-ink-soft">
-                        <UsdcAmount amount={listing.amountPerPeriod} iconSize={11} /> / period
-                      </p>
-                    </div>
-                    <Badge variant={listing.active ? "forest" : "neutral"}>{listing.active ? "Live" : "Rented"}</Badge>
-                  </Link>
-                ))}
-              </div>
-            )}
+            </div>
+            <Link href={myListings && myListings.length === 0 ? "/listings/new" : "/listings/mine"}>
+              <Button variant="secondary" size="sm">
+                {myListings && myListings.length === 0 ? "List a property" : "Manage"}
+              </Button>
+            </Link>
           </CardContent>
         </Card>
 
