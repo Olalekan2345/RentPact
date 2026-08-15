@@ -33,6 +33,7 @@ import {
   type MaintenanceStatus,
 } from "@/lib/messages";
 import { useAttachments, AttachButton, AttachmentPreviews, MessageAttachments } from "@/components/message/attachments";
+import { MessageTicks } from "@/components/message/MessageTicks";
 
 const CATEGORY_OPTIONS: { value: MaintenanceCategory; label: string }[] = [
   { value: "plumbing", label: "Plumbing" },
@@ -597,9 +598,9 @@ function MessageBubble({
 
 function MessageMeta({ message, isOwn }: { message: Message; isOwn: boolean }) {
   return (
-    <span className="px-1 text-[11px] text-ink-soft">
+    <span className="flex items-center gap-1 px-1 text-[11px] text-ink-soft">
       {formatDate(new Date(message.createdAt), "long")}
-      {isOwn && <> · {message.readAt ? `Read ${formatDate(new Date(message.readAt), "long")}` : "Sent"}</>}
+      {isOwn && <MessageTicks readAt={message.readAt} deliveredAt={message.deliveredAt} />}
     </span>
   );
 }

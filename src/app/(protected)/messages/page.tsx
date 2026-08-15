@@ -10,7 +10,7 @@ import { Badge, Skeleton } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 import { getLease, type Lease } from "@/lib/leaseData";
 import { fetchListing, type Listing } from "@/lib/listings";
-import { fetchThreadsForEmail, type Thread } from "@/lib/messages";
+import { fetchThreadsForEmail, markDelivered, type Thread } from "@/lib/messages";
 
 interface ThreadRow extends Thread {
   lease: Lease | null;
@@ -28,6 +28,8 @@ export default function MessagesPage() {
 
   useEffect(() => {
     if (!session) return;
+    // Opening the inbox means these messages have reached the user → mark delivered (✓✓).
+    markDelivered(session.email);
     fetchThreadsForEmail(session.email).then(async (threads) => {
       const withDetails = await Promise.all(
         threads.map(async (t) => ({

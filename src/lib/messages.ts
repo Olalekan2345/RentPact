@@ -37,6 +37,8 @@ export interface Message {
   type: MessageType;
   text: string;
   createdAt: number;
+  /** When the recipient's app fetched the message, before they opened the thread. */
+  deliveredAt: number | null;
   readAt: number | null;
   maintenance: MaintenanceDetails | null;
   attachments: Attachment[];
@@ -203,6 +205,15 @@ export async function markThreadRead(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...target, readerEmail }),
   });
+}
+
+/** Marks all messages to this user as delivered (their app has them, not yet opened). Best-effort. */
+export async function markDelivered(readerEmail: string): Promise<void> {
+  await fetch("/api/messages/delivered", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ readerEmail }),
+  }).catch(() => {});
 }
 
 export async function updateMaintenanceStatus(

@@ -10,6 +10,7 @@ import { formatDate } from "@/lib/format";
 import { fetchListing, type Listing } from "@/lib/listings";
 import { fetchListingThread, sendListingInquiry, sendMediaMessage, markThreadRead, type Message } from "@/lib/messages";
 import { useAttachments, AttachButton, AttachmentPreviews, MessageAttachments } from "@/components/message/attachments";
+import { MessageTicks } from "@/components/message/MessageTicks";
 
 export default function ListingInquiryPage() {
   const { listingId } = useParams<{ listingId: string }>();
@@ -138,9 +139,9 @@ export default function ListingInquiryPage() {
                         {m.text}
                       </div>
                     )}
-                    <span className="px-1 text-[11px] text-ink-soft">
+                    <span className="flex items-center gap-1 px-1 text-[11px] text-ink-soft">
                       {formatDate(new Date(m.createdAt), "long")}
-                      {isOwn && <> · {m.readAt ? `Read ${formatDate(new Date(m.readAt), "long")}` : "Sent"}</>}
+                      {isOwn && <MessageTicks readAt={m.readAt} deliveredAt={m.deliveredAt} />}
                     </span>
                   </div>
                 );

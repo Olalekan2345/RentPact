@@ -15,6 +15,7 @@ import {
   type NotificationCategory,
   type NotificationPrefs,
 } from "@/lib/notifications";
+import { markDelivered } from "@/lib/messages";
 
 const CATEGORY_DOT: Record<NotificationCategory, string> = {
   money: "bg-gold-400",
@@ -41,6 +42,9 @@ export function NotificationBell({ email, address, dark = false }: { email: stri
 
   const refresh = () => {
     getNotifications({ email, address }).then(setNotifications);
+    // The app is open and polling for this user — their messages have reached
+    // them, so mark them delivered (✓✓). Opening a thread marks them read.
+    markDelivered(email);
   };
 
   useEffect(() => {

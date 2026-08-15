@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
       toEmail: toEmail.trim().toLowerCase(),
       type,
       text: text ?? "",
+      deliveredAt: null,
       maintenance: maintenance ?? null,
       attachments: Array.isArray(attachments) ? attachments : [],
       repairCreditAmount: typeof repairCreditAmount === "number" ? repairCreditAmount : null,

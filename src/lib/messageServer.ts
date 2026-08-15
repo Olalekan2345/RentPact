@@ -55,6 +55,8 @@ export interface Message {
   type: MessageType;
   text: string;
   createdAt: number;
+  /** When the recipient's app fetched the message (poll/inbox), before opening the thread. */
+  deliveredAt: number | null;
   readAt: number | null;
   maintenance: MaintenanceDetails | null;
   attachments: Attachment[];
@@ -81,6 +83,7 @@ function fromRow(row: {
   type: string;
   text: string;
   created_at: number;
+  delivered_at?: number | null;
   read_at: number | null;
   maintenance: unknown;
   attachments?: unknown;
@@ -95,6 +98,7 @@ function fromRow(row: {
     type: row.type as MessageType,
     text: row.text,
     createdAt: row.created_at,
+    deliveredAt: typeof row.delivered_at === "number" ? row.delivered_at : null,
     readAt: row.read_at,
     maintenance: row.maintenance as MaintenanceDetails | null,
     attachments: Array.isArray(row.attachments) ? (row.attachments as Attachment[]) : [],
@@ -201,6 +205,7 @@ export async function createMessage(input: Omit<Message, "id" | "createdAt" | "r
     type: message.type,
     text: message.text,
     created_at: message.createdAt,
+    delivered_at: message.deliveredAt,
     read_at: message.readAt,
     maintenance: message.maintenance,
     attachments: message.attachments,
@@ -208,10 +213,11 @@ export async function createMessage(input: Omit<Message, "id" | "createdAt" | "r
   };
 
   // Self-heal if an optional column (migrations 0008 attachments, 0009
-  // repair_credit_amount) hasn't been applied yet: drop whichever column the
-  // error names and retry, so messaging never breaks in the window before a
-  // migration is run — those fields simply start persisting once it is.
-  const OPTIONAL_COLUMNS = ["attachments", "repair_credit_amount"] as const;
+  // repair_credit_amount, 0010 delivered_at) hasn't been applied yet: drop
+  // whichever column the error names and retry, so messaging never breaks in
+  // the window before a migration is run — those fields simply start
+  // persisting once it is.
+  const OPTIONAL_COLUMNS = ["attachments", "repair_credit_amount", "delivered_at"] as const;
   const mutable: Record<string, unknown> = { ...row };
   let { error } = await supabaseAdmin().from("messages").insert(row);
   for (let i = 0; error && i < OPTIONAL_COLUMNS.length; i++) {
@@ -224,6 +230,23 @@ export async function createMessage(input: Omit<Message, "id" | "createdAt" | "r
   if (error) throw error;
 
   return message;
+}
+
+/**
+ * Marks every message addressed to this reader as delivered — called when
+ * their app has fetched their messages (notification poll / inbox) but before
+ * they open a specific thread (which marks read). Skips already-read messages.
+ */
+export async function markMessagesDelivered(readerEmail: string): Promise<void> {
+  const normalized = readerEmail.trim().toLowerCase();
+  const { error } = await supabaseAdmin()
+    .from("messages")
+    .update({ delivered_at: Date.now() })
+    .eq("to_email", normalized)
+    .is("delivered_at", null)
+    .is("read_at", null);
+  // Ignore a missing-column error (migration 0010 not applied yet).
+  if (error && !/delivered_at/i.test(error.message ?? "")) throw error;
 }
 
 export async function markThreadRead(

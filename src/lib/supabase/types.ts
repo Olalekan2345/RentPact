@@ -50,6 +50,7 @@ type MessagesRow = {
   type: string;
   text: string;
   created_at: number;
+  delivered_at: number | null;
   read_at: number | null;
   maintenance: unknown | null;
   attachments: unknown;
