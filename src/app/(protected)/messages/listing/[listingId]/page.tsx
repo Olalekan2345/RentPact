@@ -9,7 +9,7 @@ import { Button, Skeleton } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 import { fetchListing, type Listing } from "@/lib/listings";
 import { fetchListingThread, sendListingInquiry, sendMediaMessage, markThreadRead, type Message } from "@/lib/messages";
-import { useAttachments, AttachButton, AttachmentPreviews, MessageAttachments } from "@/components/message/attachments";
+import { useAttachments, AttachButton, VoiceRecorderButton, AttachmentPreviews, MessageAttachments } from "@/components/message/attachments";
 import { MessageTicks } from "@/components/message/MessageTicks";
 
 export default function ListingInquiryPage() {
@@ -168,6 +168,7 @@ export default function ListingInquiryPage() {
           />
           <form onSubmit={handleSend} className="flex gap-2">
             <AttachButton onFiles={attachments.addFiles} disabled={sending} />
+            <VoiceRecorderButton onFile={(file) => attachments.addFiles([file])} disabled={sending} />
             <input
               type="text"
               placeholder="Ask about the property…"

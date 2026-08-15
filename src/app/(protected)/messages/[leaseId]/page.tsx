@@ -32,7 +32,7 @@ import {
   type MaintenanceCategory,
   type MaintenanceStatus,
 } from "@/lib/messages";
-import { useAttachments, AttachButton, AttachmentPreviews, MessageAttachments } from "@/components/message/attachments";
+import { useAttachments, AttachButton, VoiceRecorderButton, AttachmentPreviews, MessageAttachments } from "@/components/message/attachments";
 import { MessageTicks } from "@/components/message/MessageTicks";
 
 const CATEGORY_OPTIONS: { value: MaintenanceCategory; label: string }[] = [
@@ -449,6 +449,7 @@ export default function MessageThreadPage() {
           />
           <form onSubmit={handleSend} className="flex gap-2">
             <AttachButton onFiles={attachments.addFiles} disabled={sending} />
+            <VoiceRecorderButton onFile={(file) => attachments.addFiles([file])} disabled={sending} />
             <input
               type="text"
               placeholder="Write a message…"

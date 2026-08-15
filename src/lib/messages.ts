@@ -19,7 +19,7 @@ export interface MaintenanceDetails {
   resolvedAt: number | null;
 }
 
-export type AttachmentKind = "image" | "video" | "file";
+export type AttachmentKind = "image" | "video" | "audio" | "file";
 
 export interface Attachment {
   url: string;

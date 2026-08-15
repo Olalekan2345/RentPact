@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { uploadFile, uploadImage } from "@/lib/image";
 import { cn } from "@/lib/utils";
 import type { Attachment } from "@/lib/messages";
@@ -24,15 +24,16 @@ export function useAttachments() {
         }
         const isImage = file.type.startsWith("image/");
         const isVideo = file.type.startsWith("video/");
-        // Images get resized client-side; everything else uploads as-is.
+        const isAudio = file.type.startsWith("audio/");
+        // Images get resized client-side; everything else (incl. voice notes) uploads as-is.
         const url = isImage ? await uploadImage(file, "messages", 1400) : await uploadFile(file, "messages");
         setPending((prev) => [
           ...prev,
           {
             url,
-            name: file.name || (isImage ? "image" : "file"),
+            name: file.name || (isImage ? "image" : isAudio ? "voice note" : "file"),
             contentType: file.type || "application/octet-stream",
-            kind: isImage ? "image" : isVideo ? "video" : "file",
+            kind: isImage ? "image" : isVideo ? "video" : isAudio ? "audio" : "file",
           },
         ]);
       }
@@ -107,6 +108,11 @@ export function AttachmentPreviews({
           {a.kind === "image" ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={a.url} alt={a.name} className="h-14 w-14 rounded-md border border-forest-100 object-cover" />
+          ) : a.kind === "audio" ? (
+            <div className="flex h-14 items-center gap-1.5 rounded-md border border-forest-100 bg-cream-100 px-2.5 text-xs text-ink">
+              <MicIcon className="h-4 w-4 shrink-0 text-forest-500" />
+              <span>Voice note</span>
+            </div>
           ) : (
             <div className="flex h-14 max-w-[10rem] items-center gap-1.5 rounded-md border border-forest-100 bg-cream-100 px-2.5 text-xs text-ink">
               <FileIcon className="h-4 w-4 shrink-0 text-ink-muted" />
@@ -150,6 +156,11 @@ export function MessageAttachments({ attachments }: { attachments: Attachment[] 
       {others.map((a, i) =>
         a.kind === "video" ? (
           <video key={i} src={a.url} controls className="w-full rounded-lg border border-forest-100" />
+        ) : a.kind === "audio" ? (
+          <div key={i} className="flex items-center gap-2 rounded-lg border border-forest-100 bg-cream-100 px-2 py-1.5">
+            <MicIcon className="h-4 w-4 shrink-0 text-forest-500" />
+            <audio src={a.url} controls className="h-8 w-full min-w-0" />
+          </div>
         ) : (
           <a
             key={i}
@@ -166,6 +177,121 @@ export function MessageAttachments({ attachments }: { attachments: Attachment[] 
         ),
       )}
     </div>
+  );
+}
+
+function fmtDuration(s: number) {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${sec.toString().padStart(2, "0")}`;
+}
+
+/**
+ * Records a voice note from the mic (MediaRecorder) and hands the finished
+ * clip to `onFile` as an audio File — which the composer uploads through the
+ * same attachment path. Idle shows a mic button; while recording it shows a
+ * timer with stop (attach) and cancel (discard).
+ */
+export function VoiceRecorderButton({ onFile, disabled }: { onFile: (file: File) => void; disabled?: boolean }) {
+  const [recording, setRecording] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cancelledRef = useRef(false);
+
+  const cleanup = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = null;
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    recorderRef.current = null;
+    chunksRef.current = [];
+    setRecording(false);
+    setSeconds(0);
+  };
+
+  useEffect(() => cleanup, []);
+
+  const start = async () => {
+    setError(null);
+    if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setError("Recording isn't supported on this device.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const mimeType = ["audio/webm", "audio/mp4", "audio/ogg"].find((t) => MediaRecorder.isTypeSupported(t)) ?? "";
+      const mr = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      recorderRef.current = mr;
+      chunksRef.current = [];
+      cancelledRef.current = false;
+      mr.ondataavailable = (e) => {
+        if (e.data.size) chunksRef.current.push(e.data);
+      };
+      mr.onstop = () => {
+        const type = mr.mimeType || "audio/webm";
+        const blob = new Blob(chunksRef.current, { type });
+        const ext = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
+        const send = !cancelledRef.current && blob.size > 0;
+        cleanup();
+        if (send) onFile(new File([blob], `voice-note.${ext}`, { type }));
+      };
+      mr.start();
+      setRecording(true);
+      timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
+    } catch {
+      setError("Mic access was blocked.");
+      cleanup();
+    }
+  };
+
+  const stop = () => {
+    cancelledRef.current = false;
+    recorderRef.current?.stop();
+  };
+  const cancel = () => {
+    cancelledRef.current = true;
+    recorderRef.current?.stop();
+  };
+
+  if (recording) {
+    return (
+      <div className="flex h-11 shrink-0 items-center gap-2 rounded-md border border-terracotta-200 bg-terracotta-50 px-3">
+        <span className="h-2 w-2 animate-pulse rounded-full bg-terracotta-500" />
+        <span className="text-sm tabular-nums text-terracotta-700">{fmtDuration(seconds)}</span>
+        <button type="button" onClick={cancel} aria-label="Discard recording" className="text-ink-muted hover:text-ink">
+          <XIcon className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={stop}
+          aria-label="Stop and attach voice note"
+          className="flex h-7 w-7 items-center justify-center rounded-full bg-forest-500 text-cream-50"
+        >
+          <StopIcon className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={start}
+      aria-label="Record a voice note"
+      title={error ?? "Record a voice note"}
+      className={cn(
+        "flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-forest-100 bg-cream-50 transition-colors hover:bg-cream-200 hover:text-ink disabled:cursor-not-allowed disabled:opacity-60",
+        error ? "text-terracotta-500" : "text-ink-muted",
+      )}
+    >
+      <MicIcon className="h-5 w-5" />
+    </button>
   );
 }
 
@@ -188,6 +314,24 @@ function FileIcon(props: React.SVGProps<SVGSVGElement>) {
     <svg viewBox="0 0 24 24" fill="none" {...props}>
       <path d="M6 3.5h7L18 8v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" />
       <path d="M13 3.5V8h4.5" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function MicIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" {...props}>
+      <rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" strokeWidth="1.75" />
+      <path d="M5.5 11a6.5 6.5 0 0 0 13 0" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+      <path d="M12 17.5V21M9 21h6" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function StopIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <rect x="6" y="6" width="12" height="12" rx="2" />
     </svg>
   );
 }
