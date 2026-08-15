@@ -15,6 +15,7 @@ import { fetchListingIdForLease, fetchListing, type Listing } from "@/lib/listin
 import { fetchMoveOutCondition, type MoveOutCondition } from "@/lib/moveOut";
 import { fetchDisputeRulingsForLease, type DisputeRulingRecord } from "@/lib/disputeRuling";
 import { CONDITION_AREAS } from "@/lib/condition";
+import { fetchThread, type Message } from "@/lib/messages";
 import { fetchActivityFeedForLease, type ActivityEvent } from "@/lib/activityEventStore";
 import {
   getLease,
@@ -42,6 +43,18 @@ const toSec = (n: number) => (n > 1e12 ? Math.floor(n / 1000) : n);
 
 const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
+const SEVERITY_LABEL: Record<string, string> = {
+  cosmetic: "Cosmetic",
+  "affects-daily-living": "Affects daily living",
+  "urgent-safety": "Urgent / safety",
+};
+const STATUS_LABEL: Record<string, string> = {
+  reported: "Reported",
+  acknowledged: "Acknowledged",
+  "in-progress": "In progress",
+  resolved: "Resolved",
+};
+
 export default function LeaseRecordPage() {
   const { id } = useParams<{ id: string }>();
   const { session, isLoading } = useAuth();
@@ -54,6 +67,7 @@ export default function LeaseRecordPage() {
   const [moveOut, setMoveOut] = useState<MoveOutCondition | null>(null);
   const [rulings, setRulings] = useState<DisputeRulingRecord[]>([]);
   const [constitution, setConstitution] = useState<ConstitutionDoc | null>(null);
+  const [thread, setThread] = useState<Message[]>([]);
 
   useEffect(() => {
     if (!isLoading && !session) router.push("/auth");
@@ -67,6 +81,7 @@ export default function LeaseRecordPage() {
     fetchMoveOutCondition(id).then(setMoveOut);
     fetchDisputeRulingsForLease(id).then(setRulings);
     fetchConstitution().then(setConstitution);
+    fetchThread(id).then(setThread);
     fetchListingIdForLease(id).then((lid) => {
       if (lid) fetchListing(lid).then(setListing);
     });
@@ -124,6 +139,16 @@ export default function LeaseRecordPage() {
   const condition = listing?.condition ?? null;
   const resolvedDisputes = activity.filter((i) => i.type === "dispute-resolved").sort((a, b) => a.timestamp - b.timestamp);
   const hadDisputes = resolvedDisputes.length > 0 || activity.some((i) => i.type === "dispute-raised");
+
+  // Formal issue reports (Article 3) and repair-credit requests raised during
+  // the lease — the accountability record, distinct from raw chat.
+  const issues = thread
+    .filter((m) => m.type === "maintenance" && m.maintenance)
+    .sort((a, b) => a.createdAt - b.createdAt);
+  const repairRequests = thread
+    .filter((m) => m.repairCreditAmount != null)
+    .sort((a, b) => a.createdAt - b.createdAt);
+  const repairCreditPaid = activity.some((i) => i.type === "repair-credit-accepted");
 
   const usd = (n: number) => `${n.toFixed(2)} USDC`;
 
@@ -298,6 +323,57 @@ export default function LeaseRecordPage() {
               </li>
             ))}
           </ul>
+        </section>
+
+        {/* issues & maintenance */}
+        <section className="mt-7 break-inside-avoid">
+          <SectionTitle>Issues &amp; maintenance</SectionTitle>
+          <p className="mt-1 text-xs text-ink-soft">
+            Formal issue reports and repair-credit requests raised during the tenancy, with how they were handled. From
+            RentPact&apos;s records; casual messages are not included.
+          </p>
+          {issues.length === 0 && repairRequests.length === 0 ? (
+            <p className="mt-2 text-sm text-ink-soft">No issues were reported during this tenancy.</p>
+          ) : (
+            <div className="mt-3 flex flex-col gap-3">
+              {issues.map((m) => {
+                const d = m.maintenance!;
+                return (
+                  <div key={m.id} className="rounded-md border border-forest-100 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-forest-600">{d.category}</span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          d.status === "resolved" ? "bg-gold-50 text-gold-700" : "bg-terracotta-50 text-terracotta-600"
+                        }`}
+                      >
+                        {STATUS_LABEL[d.status] ?? d.status} · {SEVERITY_LABEL[d.severity] ?? d.severity}
+                      </span>
+                    </div>
+                    {d.description && <p className="mt-1.5 text-sm text-ink">{d.description}</p>}
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-ink-soft">
+                      <span>Reported {formatDate(new Date(m.createdAt), "long")}</span>
+                      <span>Acknowledged {d.acknowledgedAt ? formatDate(new Date(d.acknowledgedAt), "long") : "—"}</span>
+                      <span>Resolved {d.resolvedAt ? formatDate(new Date(d.resolvedAt), "long") : "not resolved"}</span>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {repairRequests.map((m) => (
+                <div key={m.id} className="rounded-md border border-gold-200 bg-gold-50 p-3">
+                  <p className="text-sm text-ink">
+                    🧾 Repair credit requested — <span className="font-semibold">{usd(m.repairCreditAmount ?? 0)}</span>
+                    <span className="text-ink-soft"> · {formatDate(new Date(m.createdAt), "long")}</span>
+                  </p>
+                  {m.text && <p className="mt-1 text-sm text-ink-muted">{m.text}</p>}
+                  {repairCreditPaid && (
+                    <p className="mt-1 text-xs font-medium text-gold-700">Approved and paid — lease resumed.</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         {/* disputes */}
