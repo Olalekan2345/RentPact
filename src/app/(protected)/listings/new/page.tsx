@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { z } from "zod";
 import { motion } from "framer-motion";
@@ -12,7 +12,7 @@ import { CurrencyEquivalent } from "@/components/CurrencyEquivalent";
 import { useCautionFeeLabel, suggestedCautionRange, isCautionFeeHigh } from "@/lib/cautionFee";
 import { FREQUENCY_OPTIONS, INTERVAL_DAYS } from "@/lib/contracts/frequency";
 import { UsdcAmount } from "@/components/UsdcAmount";
-import { createListing } from "@/lib/listings";
+import { createListing, fetchListing } from "@/lib/listings";
 import { fetchTemplates, saveTemplate, type LeaseTemplate } from "@/lib/templates";
 import { resizeImageToDataUrl, uploadDataUrl, uploadImage, uploadFile } from "@/lib/image";
 import {
@@ -75,8 +75,19 @@ const FREQUENCY_UNIT_LABEL: Record<ReleaseFrequency, string> = {
 };
 
 export default function NewListingPage() {
+  return (
+    <Suspense fallback={null}>
+      <NewListingForm />
+    </Suspense>
+  );
+}
+
+function NewListingForm() {
   const { session, isLoading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const prefilledRef = useRef(false);
+  const [relisting, setRelisting] = useState(false);
 
   const [step, setStep] = useState(0);
 
@@ -132,6 +143,41 @@ export default function NewListingPage() {
     if (!session) return;
     fetchTemplates(session.email).then(setTemplates);
   }, [session]);
+
+  // Re-listing: prefill every field from a previous listing (?from=<id>), so a
+  // landlord re-renting the same unit only tweaks price/rules. The condition is
+  // prefilled as a STARTING POINT — the banner asks them to review it, since
+  // the property's state may have changed since the last tenancy (Article 2).
+  useEffect(() => {
+    if (prefilledRef.current) return;
+    const fromId = searchParams.get("from");
+    if (!fromId) return;
+    prefilledRef.current = true;
+    fetchListing(fromId).then((l) => {
+      if (!l) return;
+      setPropertyAddress(l.propertyAddress);
+      setPropertyType(l.propertyType);
+      setPhotoUrl(l.photoUrl ?? "");
+      setAmenities(l.amenities);
+      setAmountPerPeriod(String(l.amountPerPeriod));
+      setTotalPeriods(String(l.totalPeriods));
+      setFrequency(l.frequency);
+      setIncludeSecurityDeposit(l.securityDeposit !== null);
+      setSecurityDepositAmount(l.securityDeposit !== null ? String(l.securityDeposit) : "");
+      setHouseRules(l.houseRules);
+      setNoticePeriodDays(l.noticePeriodDays !== null ? String(l.noticePeriodDays) : "");
+      if (l.condition) {
+        setIncludeCondition(true);
+        setAreas(l.condition.areas);
+        setKnownDefects(l.condition.knownDefects);
+        setMaintenanceLandlord(l.condition.maintenanceLandlord || DEFAULT_MAINTENANCE_LANDLORD);
+        setMaintenanceTenant(l.condition.maintenanceTenant || DEFAULT_MAINTENANCE_TENANT);
+        setPhotos(l.condition.photos);
+        setVideoUrl(l.condition.videoUrl ?? "");
+      }
+      setRelisting(true);
+    });
+  }, [searchParams]);
 
   // The "Publish listing" submit button occupies the same spot the
   // "Continue" button was just in, so a normal rapid double-click on
@@ -382,10 +428,19 @@ export default function NewListingPage() {
 
   return (
       <div className="mx-auto max-w-2xl px-4 py-10 sm:px-8">
-        <h1 className="text-3xl text-ink">List a property</h1>
+        <h1 className="text-3xl text-ink">{relisting ? "List this property again" : "List a property"}</h1>
         <p className="mt-1 text-ink-muted">
           Set your terms — tenants can find and rent this once it&apos;s published.
         </p>
+
+        {relisting && (
+          <div className="mt-4 rounded-lg border border-gold-200 bg-gold-50 px-4 py-3 text-sm text-gold-700">
+            Your previous details are pre-filled — update the price and rules as needed. Please{" "}
+            <span className="font-semibold">review the property&apos;s current condition and refresh the photos</span>{" "}
+            before publishing, since its state may have changed since the last tenancy. This publishes a brand-new
+            listing.
+          </div>
+        )}
 
         {/* Step indicator */}
         <div className="mt-6 flex items-center gap-2">

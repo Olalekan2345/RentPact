@@ -68,29 +68,42 @@ export default function MyPropertiesPage() {
               const frequencyLabel =
                 FREQUENCY_OPTIONS.find((f) => f.value === listing.frequency)?.label ?? listing.frequency;
               return (
-                <Link
+                <div
                   key={listing.id}
-                  href={`/listings/${listing.id}`}
-                  className="flex items-center gap-4 rounded-lg border border-forest-100 bg-cream-100 p-4 transition-colors hover:border-forest-200"
+                  className="flex items-center gap-4 rounded-lg border border-forest-100 bg-cream-100 p-4"
                 >
-                  <PropertyImage
-                    seed={listing.id}
-                    propertyType={listing.propertyType}
-                    overrideUrl={listing.photoUrl}
-                    alt={listing.propertyAddress}
-                    className="h-16 w-16 shrink-0 rounded-md"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-ink">{listing.propertyAddress}</p>
-                    <p className="mt-0.5 flex items-center gap-1 text-sm text-ink-soft">
-                      <UsdcAmount amount={listing.amountPerPeriod} iconSize={12} /> / period · {frequencyLabel}
-                    </p>
-                    <p className="mt-0.5 text-xs capitalize text-ink-soft">{listing.propertyType}</p>
+                  <Link
+                    href={`/listings/${listing.id}`}
+                    className="flex min-w-0 flex-1 items-center gap-4 transition-opacity hover:opacity-80"
+                  >
+                    <PropertyImage
+                      seed={listing.id}
+                      propertyType={listing.propertyType}
+                      overrideUrl={listing.photoUrl}
+                      alt={listing.propertyAddress}
+                      className="h-16 w-16 shrink-0 rounded-md"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-ink">{listing.propertyAddress}</p>
+                      <p className="mt-0.5 flex items-center gap-1 text-sm text-ink-soft">
+                        <UsdcAmount amount={listing.amountPerPeriod} iconSize={12} /> / period · {frequencyLabel}
+                      </p>
+                      <p className="mt-0.5 text-xs capitalize text-ink-soft">{listing.propertyType}</p>
+                    </div>
+                  </Link>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <Badge variant={listing.active ? "forest" : "neutral"}>
+                      {listing.active ? "Live" : "Rented"}
+                    </Badge>
+                    {!listing.active && (
+                      <Link href={`/listings/new?from=${listing.id}`}>
+                        <Button size="sm" variant="secondary">
+                          List again
+                        </Button>
+                      </Link>
+                    )}
                   </div>
-                  <Badge variant={listing.active ? "forest" : "neutral"} className="shrink-0">
-                    {listing.active ? "Live" : "Rented"}
-                  </Badge>
-                </Link>
+                </div>
               );
             })}
           </div>

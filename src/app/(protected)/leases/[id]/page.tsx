@@ -413,6 +413,11 @@ export default function LeaseDetailPage() {
                   <Button variant="secondary">Download lease record</Button>
                 </Link>
               )}
+              {status === "completed" && viewerRole === "landlord" && sourceListing && (
+                <Link href={`/listings/new?from=${sourceListing.id}`}>
+                  <Button>List this property again</Button>
+                </Link>
+              )}
             </div>
 
             {viewerRole === "tenant" && status === "active" && escalatedIssues.length === 0 && (
