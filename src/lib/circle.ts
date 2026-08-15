@@ -3,7 +3,7 @@ import { envResult } from "@/lib/env";
 import { executeCircleChallenge } from "@/lib/circleSdk";
 import { publicClient, usdcAddress } from "@/lib/contracts/rentPactEscrow";
 import { encodeTransfer, toBaseUnits } from "@/lib/contracts/onChainLease";
-import { invalidateChainCache } from "@/lib/chainCache";
+import { invalidateChainCache, cachedChainRead } from "@/lib/chainCache";
 
 /**
  * Circle Web3 Services integration layer.
@@ -408,14 +408,18 @@ const GATEWAY_SUPPORTED_CHAINS = [
  */
 export async function getGatewayBalances(address: Address): Promise<ChainBalance[]> {
   if (!MOCK_MODE) {
-    const balanceWei = await publicClient.getBalance({ address });
-    return [
-      {
-        chain: "arc-testnet",
-        chainLabel: "Arc Testnet",
-        balance: Number(formatUnits(balanceWei, 18)),
-      },
-    ];
+    // Cached so revisiting the deposit page (or prefetching) is instant; the
+    // cache is cleared after any gasless write, so a fresh balance shows post-tx.
+    return cachedChainRead(`gateway-balance:${address}`, async () => {
+      const balanceWei = await publicClient.getBalance({ address });
+      return [
+        {
+          chain: "arc-testnet",
+          chainLabel: "Arc Testnet",
+          balance: Number(formatUnits(balanceWei, 18)),
+        },
+      ];
+    });
   }
 
   await delay(400);

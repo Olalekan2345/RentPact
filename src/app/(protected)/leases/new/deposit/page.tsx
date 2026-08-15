@@ -43,14 +43,14 @@ export default function DepositPage() {
       return;
     }
     setDraft(JSON.parse(raw));
+    // Show the deposit form immediately — the balance loads in the background
+    // below and shouldn't gate the whole flow behind a slow Arc RPC read.
+    setStep("select-source");
   }, [router]);
 
   useEffect(() => {
     if (!session) return;
-    getGatewayBalances(session.address).then((b) => {
-      setBalances(b);
-      setStep("select-source");
-    });
+    getGatewayBalances(session.address).then(setBalances);
   }, [session]);
 
   const rentDue = draft ? draft.amountPerPeriod * draft.totalPeriods : 0;
@@ -170,11 +170,11 @@ export default function DepositPage() {
         <AnimatePresence mode="wait">
           {step === "loading" && (
             <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-8">
-              <p className="text-sm text-ink-soft">Loading your unified balance…</p>
+              <p className="text-sm text-ink-soft">Loading…</p>
             </motion.div>
           )}
 
-          {(step === "select-source" || step === "bridging" || step === "depositing") && balances && (
+          {(step === "select-source" || step === "bridging" || step === "depositing") && (
             <motion.div
               key="select"
               initial={{ opacity: 0 }}
@@ -184,29 +184,39 @@ export default function DepositPage() {
             >
               <p className="text-sm font-medium text-ink-muted">Deposit from</p>
               <div className="flex flex-col gap-2">
-                {balances.map((b) => (
-                  <button
-                    key={b.chain}
-                    type="button"
-                    disabled={step !== "select-source"}
-                    onClick={() => setSelectedChain(b.chain)}
-                    className={`flex items-center justify-between rounded-md border px-4 py-3 text-left transition-colors disabled:opacity-60 ${
-                      selectedChain === b.chain
-                        ? "border-forest-400 bg-forest-50"
-                        : "border-forest-100 hover:border-forest-200"
-                    }`}
-                  >
-                    <span>
-                      <span className="block font-medium text-ink">{b.chainLabel}</span>
-                      <span className="text-xs text-ink-soft">
-                        {b.chain === "arc-testnet" ? "Native balance" : "Bridged via CCTP"}
+                {balances ? (
+                  balances.map((b) => (
+                    <button
+                      key={b.chain}
+                      type="button"
+                      disabled={step !== "select-source"}
+                      onClick={() => setSelectedChain(b.chain)}
+                      className={`flex items-center justify-between rounded-md border px-4 py-3 text-left transition-colors disabled:opacity-60 ${
+                        selectedChain === b.chain
+                          ? "border-forest-400 bg-forest-50"
+                          : "border-forest-100 hover:border-forest-200"
+                      }`}
+                    >
+                      <span>
+                        <span className="block font-medium text-ink">{b.chainLabel}</span>
+                        <span className="text-xs text-ink-soft">
+                          {b.chain === "arc-testnet" ? "Native balance" : "Bridged via CCTP"}
+                        </span>
                       </span>
+                      <span className="font-semibold text-ink">
+                        <UsdcAmount amount={b.balance} iconSize={13} />
+                      </span>
+                    </button>
+                  ))
+                ) : (
+                  <div className="flex items-center justify-between rounded-md border border-forest-100 px-4 py-3">
+                    <span>
+                      <span className="block font-medium text-ink">Arc Testnet</span>
+                      <span className="text-xs text-ink-soft">Native balance</span>
                     </span>
-                    <span className="font-semibold text-ink">
-                      <UsdcAmount amount={b.balance} iconSize={13} />
-                    </span>
-                  </button>
-                ))}
+                    <span className="text-xs text-ink-soft">Loading balance…</span>
+                  </div>
+                )}
               </div>
 
               {needsBridge && selectedBalance < totalDue && (
