@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, DM_Sans } from "next/font/google";
 import "./globals.css";
 import { envResult } from "@/lib/env";
@@ -29,6 +29,12 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://rentpact.xyz"),
   title: TITLE,
   description: DESCRIPTION,
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "RentPact",
+  },
   openGraph: {
     title: TITLE,
     description: DESCRIPTION,
@@ -40,6 +46,12 @@ export const metadata: Metadata = {
     title: TITLE,
     description: DESCRIPTION,
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#0B3D2E",
 };
 
 export default function RootLayout({
