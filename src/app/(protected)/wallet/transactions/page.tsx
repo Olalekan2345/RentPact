@@ -23,6 +23,8 @@ const MONEY_TYPES: ActivityItem["type"][] = [
   "cancelled",
   "caution-released",
   "caution-claim-resolved",
+  "repair-credit-offered",
+  "repair-credit-accepted",
 ];
 
 type RowType = ActivityItem["type"] | "withdrawal";
@@ -90,6 +92,18 @@ function describeMoneyEvent(item: ActivityItem, role: "tenant" | "landlord" | nu
   if (item.type === "caution-claim-resolved") {
     return { label: "Caution claim resolved", direction: "neutral" as const };
   }
+  if (item.type === "repair-credit-offered") {
+    // The landlord's funds leave their wallet into escrow at offer time.
+    return role === "landlord"
+      ? { label: "Repair credit funded", direction: "out" as const }
+      : { label: "Landlord funded a repair credit", direction: "neutral" as const };
+  }
+  if (item.type === "repair-credit-accepted") {
+    // The credit reaches the tenant at accept time.
+    return role === "tenant"
+      ? { label: "Repair credit received", direction: "in" as const }
+      : { label: "Repair credit paid to tenant", direction: "neutral" as const };
+  }
   return { label: item.type, direction: "neutral" as const };
 }
 
@@ -137,16 +151,20 @@ export default function TransactionsPage() {
 
     const activityRows: DisplayRow[] = activity
       .filter((item) => MONEY_TYPES.includes(item.type))
-      .map((item) => {
+      .flatMap<DisplayRow>((item) => {
         const lease = leaseMap.get(item.leaseId) ?? null;
         const role: "tenant" | "landlord" | null = lease
           ? lease.tenantEmail === session.email
             ? "tenant"
             : "landlord"
           : null;
+        // Repair credit: the landlord's money moves at offer, the tenant's at
+        // accept. Show each party only the leg where their own balance changed.
+        if (item.type === "repair-credit-offered" && role === "tenant") return [];
+        if (item.type === "repair-credit-accepted" && role === "landlord") return [];
         const counterparty = lease ? (role === "tenant" ? lease.landlordEmail : lease.tenantEmail) : "—";
         const { label, direction } = describeMoneyEvent(item, role);
-        return {
+        return [{
           id: item.id,
           type: item.type,
           timestamp: item.timestamp,
@@ -170,7 +188,7 @@ export default function TransactionsPage() {
               {formatDate(new Date(item.timestamp), "long")}
             </>
           ),
-        };
+        }];
       });
 
     const transferRows: DisplayRow[] = transfers.map((t) => ({
