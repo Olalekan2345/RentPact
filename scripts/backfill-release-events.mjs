@@ -42,6 +42,7 @@ const USDC_DECIMALS = 6;
 const HEALED_EVENTS = {
   "0x93be08d1fbf976af717307eec845a2147837d5eed255f8715e35898336f9e4d8": { type: "release", amountWord: 1 },
   "0x8af2865f2fb26a4160828c0c4b6831c26360e12a69fa9193331a59d7fbc7ad47": { type: "caution-released", amountWord: 0 },
+  "0x1b84372106d77c6daea0dda35bbc0229d10a83f58ec899092884925193682341": { type: "dispute-raised" },
 };
 
 const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
@@ -82,7 +83,7 @@ async function main() {
   for (const l of healable) {
     const spec = HEALED_EVENTS[l.topics[0].toLowerCase()];
     const leaseId = BigInt(l.topics[1]).toString();
-    const amount = Number(word(l.data, spec.amountWord)) / 10 ** USDC_DECIMALS;
+    const amount = spec.amountWord !== undefined ? Number(word(l.data, spec.amountWord)) / 10 ** USDC_DECIMALS : null;
     const txHash = l.transaction_hash;
     const timestamp = Date.parse(l.block_timestamp);
     const row = { id: `${txHash}-${spec.type}`, lease_id: leaseId, type: spec.type, timestamp, amount, tx_hash: txHash, landlord_bps: null, resolution_type: null };
@@ -109,7 +110,8 @@ async function main() {
     const orphan = knownLeaseIds.has(leaseId) ? "" : "  [!] no lease_metadata row — won't map to an address feed";
     console.log(`Lease ${leaseId}: ${rows.length} money event(s) on-chain · ${rows.length - missing.length} already in feed · ${missing.length} to backfill${orphan}`);
     for (const r of missing.sort((a, b) => a.timestamp - b.timestamp)) {
-      console.log(`    + ${r.type} ${r.amount.toFixed(2)} USDC  ${new Date(r.timestamp).toISOString().slice(0, 10)}  ${r.tx_hash}`);
+      const amt = r.amount != null ? `${r.amount.toFixed(2)} USDC` : "—";
+      console.log(`    + ${r.type} ${amt}  ${new Date(r.timestamp).toISOString().slice(0, 10)}  ${r.tx_hash}`);
     }
 
     if (APPLY && missing.length) {

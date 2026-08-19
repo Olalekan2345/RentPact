@@ -138,7 +138,15 @@ export default function LeaseRecordPage() {
   const totalEscrowed = lease.amountPerPeriod * lease.totalPeriods + lease.cautionAmount;
   const condition = listing?.condition ?? null;
   const resolvedDisputes = activity.filter((i) => i.type === "dispute-resolved").sort((a, b) => a.timestamp - b.timestamp);
-  const hadDisputes = resolvedDisputes.length > 0 || activity.some((i) => i.type === "dispute-raised");
+  // A dispute resolved by the tenant accepting a repair credit (Article 4.6)
+  // clears the dispute WITHOUT a dispute-resolved event, so count it too.
+  const repairCreditResolutions = activity
+    .filter((i) => i.type === "repair-credit-accepted")
+    .sort((a, b) => a.timestamp - b.timestamp);
+  const hadDisputes =
+    resolvedDisputes.length > 0 ||
+    repairCreditResolutions.length > 0 ||
+    activity.some((i) => i.type === "dispute-raised" || i.type === "repair-credit-offered");
 
   // Formal issue reports (Article 3) and repair-credit requests raised during
   // the lease — the accountability record, distinct from raw chat.
@@ -407,7 +415,18 @@ export default function LeaseRecordPage() {
                   </div>
                 );
               })}
-              {resolvedDisputes.length === 0 && (
+              {repairCreditResolutions.map((d, i) => (
+                <div key={d.id ?? `rc-${i}`} className="rounded-md border border-forest-100 p-3">
+                  <p className="text-sm font-medium text-ink">
+                    Dispute resolved {formatDate(new Date(d.timestamp))} · repair credit
+                  </p>
+                  <p className="mt-1 text-sm text-ink-muted">
+                    The landlord paid the tenant a repair credit{d.amount != null ? ` of ${usd(d.amount)}` : ""} — the
+                    lease resumed on its normal schedule (Article 4.6).
+                  </p>
+                </div>
+              ))}
+              {resolvedDisputes.length === 0 && repairCreditResolutions.length === 0 && (
                 <p className="text-sm text-ink-soft">A dispute was raised on this lease. See the activity log above.</p>
               )}
             </div>

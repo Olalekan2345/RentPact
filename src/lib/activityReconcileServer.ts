@@ -21,12 +21,15 @@ const SCAN_BASE = process.env.ARCSCAN_API_BASE ?? "https://testnet.arcscan.app";
 const USDC_DECIMALS = 6;
 
 // Event topic0 -> how to turn its log into a feed row. `amountWord` is the
-// index of the 32-byte data word holding the USDC amount (base units).
+// index of the 32-byte data word holding the USDC amount (base units); omit it
+// for events that carry no amount (e.g. a dispute being raised).
 //   TrancheReleased(leaseId, periodsReleased, amountReleased, totalReleased)
 //   CautionReleased(leaseId, amount)
-const HEALED_EVENTS: Record<string, { type: ActivityType; amountWord: number }> = {
+//   DisputeRaised(leaseId, tenant, reason)
+const HEALED_EVENTS: Record<string, { type: ActivityType; amountWord?: number }> = {
   "0x93be08d1fbf976af717307eec845a2147837d5eed255f8715e35898336f9e4d8": { type: "release", amountWord: 1 },
   "0x8af2865f2fb26a4160828c0c4b6831c26360e12a69fa9193331a59d7fbc7ad47": { type: "caution-released", amountWord: 0 },
+  "0x1b84372106d77c6daea0dda35bbc0229d10a83f58ec899092884925193682341": { type: "dispute-raised" },
 };
 
 // Throttle per lease so a burst of views triggers at most one indexer pass per
@@ -81,7 +84,7 @@ export async function reconcileFeedFromChain(leaseIds: string[]): Promise<void> 
             leaseId,
             type: spec.type,
             timestamp: Date.parse(log.block_timestamp),
-            amount: Number(dataWord(log.data, spec.amountWord)) / 10 ** USDC_DECIMALS,
+            amount: spec.amountWord !== undefined ? Number(dataWord(log.data, spec.amountWord)) / 10 ** USDC_DECIMALS : null,
             txHash: log.transaction_hash,
             landlordBps: null,
             resolutionType: null,
