@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import { LeaseCard } from "@/components/LeaseCard";
 import { PropertyImage } from "@/components/PropertyImage";
 import { EmptyState } from "@/components/EmptyState";
+import { GettingStarted } from "@/components/GettingStarted";
 import { ArrowLink, Badge, Button, Card, CardContent, CountUp, SkeletonText, Skeleton } from "@/components/ui";
 import { CurrencyEquivalent } from "@/components/CurrencyEquivalent";
 import { UsdcAmount } from "@/components/UsdcAmount";
@@ -156,6 +157,15 @@ export default function DashboardPage() {
 
   const isLandlord = (landlordLeases?.length ?? 0) > 0 || (myListings?.length ?? 0) > 0;
 
+  // A brand-new user: everything loaded, and they have no leases or listings yet.
+  const isNewUser =
+    tenantLeases !== null &&
+    landlordLeases !== null &&
+    myListings !== null &&
+    tenantLeases.length === 0 &&
+    landlordLeases.length === 0 &&
+    myListings.length === 0;
+
   if (isLoading || !session) {
     return (
       <div className="min-h-screen bg-cream">
@@ -171,6 +181,8 @@ export default function DashboardPage() {
 
   return (
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
+        <GettingStarted show={isNewUser} />
+
         <h1 className="text-3xl text-ink">Your dashboard</h1>
         <p className="mt-1 text-ink-muted">{session.email}</p>
 
