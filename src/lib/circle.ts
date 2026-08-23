@@ -222,7 +222,16 @@ export async function getOrCreateWallet(email: string): Promise<CircleWallet> {
       // Circle's hosted PIN UI — the user sets a PIN, never sees a seed phrase.
       await executeCircleChallenge({ appId, userToken, encryptionKey, challengeId });
 
+      // The SCA wallet isn't queryable the instant the challenge resolves —
+      // Circle finishes deploying it over a few seconds. Poll for it before
+      // giving up; otherwise the very first sign-in throws and bounces the user
+      // back to /auth even though the wallet was just created (they'd have to
+      // sign in a second time for it to appear).
       wallet = await fetchExistingWallet(userToken);
+      for (let attempt = 0; attempt < 20 && !wallet; attempt++) {
+        await delay(1500);
+        wallet = await fetchExistingWallet(userToken);
+      }
       if (!wallet) throw new Error("Wallet creation did not complete.");
     }
 
