@@ -1,6 +1,7 @@
 import "server-only";
 import type { ConditionAreaKey } from "@/lib/condition";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { sendPushToEmail } from "@/lib/pushServer";
 
 /**
  * Conversation threads. Two kinds share one store:
@@ -192,6 +193,29 @@ export async function listThreadsForEmail(email: string): Promise<Thread[]> {
   return threads.sort((a, b) => b.lastMessage.createdAt - a.lastMessage.createdAt);
 }
 
+function buildPushPayload(m: Message): { title: string; body: string; url: string; tag?: string } {
+  const url = m.leaseId ? `/messages/${m.leaseId}` : "/messages";
+  let title = "New message";
+  if (m.type === "system") title = "RentPact update";
+  else if (m.type === "payment-reminder") title = "Payment reminder";
+  else if (m.type === "maintenance") title = "New issue report";
+  else if (m.repairCreditAmount != null) title = "Repair credit requested";
+
+  let body = m.text?.trim() || "";
+  if (!body && m.attachments.length > 0) {
+    const kinds = new Set(m.attachments.map((a) => a.kind));
+    body = kinds.has("audio") ? "🎤 Voice note" : kinds.has("image") ? "📷 Photo" : "📎 Attachment";
+  }
+  if (body.length > 140) body = `${body.slice(0, 137)}…`;
+
+  return {
+    title,
+    body,
+    url,
+    tag: m.leaseId ? `lease-${m.leaseId}` : m.listingId ? `listing-${m.listingId}` : undefined,
+  };
+}
+
 export async function createMessage(input: Omit<Message, "id" | "createdAt" | "readAt">): Promise<Message> {
   if (!input.leaseId && !input.listingId) throw new Error("A message needs a leaseId or listingId");
   const message: Message = { ...input, id: crypto.randomUUID(), createdAt: Date.now(), readAt: null };
@@ -228,6 +252,11 @@ export async function createMessage(input: Omit<Message, "id" | "createdAt" | "r
     ({ error } = await supabaseAdmin().from("messages").insert(mutable as typeof row));
   }
   if (error) throw error;
+
+  // Best-effort push to the recipient — covers chat messages and every system
+  // event that posts to the thread (rent released, dispute raised, repair
+  // credit, etc.). Never blocks or fails message creation.
+  sendPushToEmail(message.toEmail, buildPushPayload(message)).catch(() => {});
 
   return message;
 }

@@ -165,6 +165,14 @@ type ActivityEventsRow = {
   resolution_type: string | null;
 };
 
+type PushSubscriptionsRow = {
+  endpoint: string;
+  email: string;
+  p256dh: string;
+  auth: string;
+  created_at: number;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -281,6 +289,12 @@ export type Database = {
         Row: ActivityEventsRow;
         Insert: ActivityEventsRow;
         Update: Partial<ActivityEventsRow>;
+        Relationships: [];
+      };
+      push_subscriptions: {
+        Row: PushSubscriptionsRow;
+        Insert: PushSubscriptionsRow;
+        Update: Partial<PushSubscriptionsRow>;
         Relationships: [];
       };
     };
