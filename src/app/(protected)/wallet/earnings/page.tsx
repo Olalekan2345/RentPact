@@ -6,6 +6,8 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { Button, Skeleton } from "@/components/ui";
 import { UsdcAmount } from "@/components/UsdcAmount";
+import { CumulativeGrowthChart } from "@/components/earnings/CumulativeGrowthChart";
+import { PropertyDonut } from "@/components/earnings/PropertyDonut";
 import { formatUSDC } from "@/lib/format";
 import { MOCK_MODE } from "@/lib/circle";
 import { getActivityFeed, listLeasesForLandlord, type ActivityItem, type Lease } from "@/lib/leaseData";
@@ -114,6 +116,14 @@ export default function EarningsPage() {
 
   const totalCumulative = (leases ?? []).reduce((sum, l) => sum + l.amountPerPeriod * l.periodsReleased, 0);
 
+  const donutItems = useMemo(
+    () =>
+      (leases ?? [])
+        .map((l) => ({ id: l.id, label: l.propertyAddress, value: l.amountPerPeriod * l.periodsReleased }))
+        .filter((d) => d.value > 0),
+    [leases],
+  );
+
   const handleExportCsv = () => {
     if (!leases) return;
     if (!MOCK_MODE && landlordReleases.length > 0) {
@@ -156,9 +166,7 @@ export default function EarningsPage() {
 
       <div>
         <div className="flex items-center justify-between gap-3">
-          <p className="text-sm font-semibold text-ink">
-            {granularity === "weekly" ? "Weekly income" : "Monthly income"}
-          </p>
+          <p className="text-sm font-semibold text-ink">Earnings over time</p>
           {!MOCK_MODE && (
             <div
               role="group"
@@ -193,17 +201,26 @@ export default function EarningsPage() {
         ) : series.length === 0 ? (
           <p className="mt-2 text-sm text-ink-soft">No releases yet.</p>
         ) : (
-          <div className="mt-4 flex items-end gap-3 overflow-x-auto pb-2">
-            {series.map(([key, amount]) => (
-              <div key={key} className="flex shrink-0 flex-col items-center gap-1">
-                <span className="text-xs font-medium text-ink">{formatUSDC(amount)}</span>
-                <div
-                  className="w-10 rounded-t-md bg-forest-400"
-                  style={{ height: `${Math.max(8, (amount / maxSeries) * 120)}px` }}
-                />
-                <span className="text-[11px] text-ink-soft">{labelFor(key)}</span>
+          <div className="mt-4 flex flex-col gap-5">
+            {series.length >= 2 && <CumulativeGrowthChart series={series} labelFor={labelFor} />}
+
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-soft">
+                {granularity === "weekly" ? "Per week" : "Per month"}
+              </p>
+              <div className="flex items-end gap-3 overflow-x-auto pb-2">
+                {series.map(([key, amount]) => (
+                  <div key={key} className="flex shrink-0 flex-col items-center gap-1">
+                    <span className="text-xs font-medium text-ink">{formatUSDC(amount)}</span>
+                    <div
+                      className="w-10 rounded-t-md bg-forest-400"
+                      style={{ height: `${Math.max(8, (amount / maxSeries) * 120)}px` }}
+                    />
+                    <span className="text-[11px] text-ink-soft">{labelFor(key)}</span>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
         )}
       </div>
@@ -215,7 +232,9 @@ export default function EarningsPage() {
         ) : leases.length === 0 ? (
           <p className="mt-2 text-sm text-ink-soft">No landlord leases yet.</p>
         ) : (
-          <div className="mt-3 flex flex-col gap-2">
+          <div className="mt-3 flex flex-col gap-4">
+            {donutItems.length > 0 && <PropertyDonut items={donutItems} />}
+            <div className="flex flex-col gap-2">
             {leases.map((l) => (
               <Link
                 key={l.id}
@@ -232,7 +251,8 @@ export default function EarningsPage() {
                   <UsdcAmount amount={l.amountPerPeriod * l.periodsReleased} />
                 </span>
               </Link>
-            ))}
+              ))}
+            </div>
           </div>
         )}
       </div>
