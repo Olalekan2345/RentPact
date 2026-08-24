@@ -3,14 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { Button, Card, CardContent, Skeleton, Toggle } from "@/components/ui";
+import { Card, CardContent, Skeleton, Toggle } from "@/components/ui";
 import {
   fetchNotificationPrefs,
   updateNotificationPrefs,
   type NotificationCategory,
   type NotificationPrefs,
 } from "@/lib/notifications";
-import { enablePush, getPushState, type PushState } from "@/lib/push";
+import { enablePush, disablePush, getPushEnabled, getPushState, type PushState } from "@/lib/push";
 
 const CATEGORY_ROWS: { key: NotificationCategory; label: string; helper: string }[] = [
   { key: "money", label: "Money events", helper: "Deposits, releases, refunds" },
@@ -25,10 +25,12 @@ export default function NotificationSettingsPage() {
   const router = useRouter();
   const [prefs, setPrefs] = useState<NotificationPrefs | null>(null);
   const [pushState, setPushState] = useState<PushState>("default");
-  const [enablingPush, setEnablingPush] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
 
   useEffect(() => {
     setPushState(getPushState());
+    getPushEnabled().then(setPushEnabled);
   }, []);
 
   useEffect(() => {
@@ -49,12 +51,19 @@ export default function NotificationSettingsPage() {
     await updateNotificationPrefs(session.email, { [key]: next[key] });
   };
 
-  const handleEnablePush = async () => {
-    setEnablingPush(true);
+  const togglePush = async () => {
+    setPushBusy(true);
     try {
-      setPushState(await enablePush(session.email));
+      if (pushEnabled) {
+        await disablePush(session.email);
+        setPushEnabled(false);
+      } else {
+        const state = await enablePush(session.email);
+        setPushState(state);
+        setPushEnabled(state === "granted");
+      }
     } finally {
-      setEnablingPush(false);
+      setPushBusy(false);
     }
   };
 
@@ -66,30 +75,25 @@ export default function NotificationSettingsPage() {
         <Card className="mt-4">
           <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-ink">Push notifications</p>
+              <p className="text-sm font-semibold text-ink">Push notifications on this device</p>
               <p className="mt-1 max-w-md text-sm text-ink-muted">
-                {pushState === "granted"
-                  ? "On for this device — you'll get alerts even when RentPact is closed."
+                {pushState === "unsupported"
+                  ? "This browser doesn't support push. On iPhone, install RentPact to your home screen first."
                   : pushState === "denied"
-                    ? "Blocked in your browser settings. Re-enable notifications for this site to receive alerts."
-                    : pushState === "unsupported"
-                      ? "This browser doesn't support push. On iPhone, install RentPact to your home screen first."
+                    ? "Blocked in your browser settings. Re-enable notifications for this site, then turn it on."
+                    : pushEnabled
+                      ? "On — you'll get alerts even when RentPact is closed. Turn it off anytime."
                       : "Get alerted about rent releases, disputes, and new messages even when the app is closed."}
               </p>
             </div>
-            {pushState === "granted" ? (
-              <span className="shrink-0 rounded-full bg-forest-50 px-3 py-1 text-sm font-medium text-forest-600">
-                ✓ Enabled
-              </span>
-            ) : (
-              <Button
-                size="sm"
-                onClick={handleEnablePush}
-                disabled={enablingPush || pushState === "unsupported" || pushState === "denied"}
-              >
-                {enablingPush ? "Enabling…" : "Enable on this device"}
-              </Button>
-            )}
+            <div className="shrink-0">
+              <Toggle
+                checked={pushEnabled}
+                onChange={togglePush}
+                disabled={pushBusy || pushState === "unsupported" || pushState === "denied"}
+                label="Push notifications on this device"
+              />
+            </div>
           </CardContent>
         </Card>
       )}

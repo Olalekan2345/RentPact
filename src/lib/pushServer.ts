@@ -45,6 +45,11 @@ export async function savePushSubscription(email: string, sub: PushSubscriptionI
     );
 }
 
+export async function deletePushSubscription(endpoint: string): Promise<void> {
+  if (!endpoint) return;
+  await supabaseAdmin().from("push_subscriptions").delete().eq("endpoint", endpoint);
+}
+
 export interface PushPayload {
   title: string;
   body: string;

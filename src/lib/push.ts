@@ -62,3 +62,33 @@ export async function enablePush(email: string): Promise<PushState> {
 
   return "granted";
 }
+
+/** True only if permission is granted AND there's a live push subscription. */
+export async function getPushEnabled(): Promise<boolean> {
+  if (!isPushSupported() || Notification.permission !== "granted") return false;
+  try {
+    const registration = await navigator.serviceWorker.getRegistration();
+    if (!registration) return false;
+    return (await registration.pushManager.getSubscription()) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** Turns push off: unsubscribes the browser and removes the subscription server-side. */
+export async function disablePush(email: string): Promise<void> {
+  try {
+    const registration = await navigator.serviceWorker.getRegistration();
+    const subscription = registration ? await registration.pushManager.getSubscription() : null;
+    if (!subscription) return;
+    const endpoint = subscription.endpoint;
+    await subscription.unsubscribe();
+    await fetch("/api/push/unsubscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, endpoint }),
+    });
+  } catch {
+    // best-effort — the browser unsubscribe is what actually stops delivery
+  }
+}
