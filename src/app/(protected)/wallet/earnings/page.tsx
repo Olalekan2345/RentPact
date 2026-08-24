@@ -20,6 +20,22 @@ function monthLabel(key: string): string {
   return new Date(year, month - 1, 1).toLocaleDateString(undefined, { month: "short", year: "2-digit" });
 }
 
+type Granularity = "weekly" | "monthly";
+
+/** Monday 00:00 of the week a timestamp falls in — the bucket key for weekly grouping. */
+function weekKey(timestamp: number): string {
+  const d = new Date(timestamp);
+  d.setHours(0, 0, 0, 0);
+  const mondayOffset = (d.getDay() + 6) % 7; // Sun=0 → 6, Mon=1 → 0, …
+  d.setDate(d.getDate() - mondayOffset);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function weekLabel(key: string): string {
+  const [year, month, day] = key.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 function downloadCsv(filename: string, rows: string[][]) {
   const csv = rows.map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
@@ -36,10 +52,34 @@ export default function EarningsPage() {
   const router = useRouter();
   const [leases, setLeases] = useState<Lease[] | null>(null);
   const [releases, setReleases] = useState<ActivityItem[] | null>(null);
+  const [granularity, setGranularity] = useState<Granularity>("monthly");
 
   useEffect(() => {
     if (!isLoading && !session) router.push("/auth");
   }, [isLoading, session, router]);
+
+  // Remember each landlord's preferred view so it sticks between visits.
+  const granularityKey = session ? `rentpact:earnings-granularity:v1:${session.email}` : null;
+  useEffect(() => {
+    if (!granularityKey) return;
+    try {
+      const saved = window.localStorage.getItem(granularityKey);
+      if (saved === "weekly" || saved === "monthly") setGranularity(saved);
+    } catch {
+      /* ignore */
+    }
+  }, [granularityKey]);
+
+  const chooseGranularity = (g: Granularity) => {
+    setGranularity(g);
+    if (granularityKey) {
+      try {
+        window.localStorage.setItem(granularityKey, g);
+      } catch {
+        /* ignore */
+      }
+    }
+  };
 
   useEffect(() => {
     if (!session) return;
@@ -53,16 +93,18 @@ export default function EarningsPage() {
     [releases, landlordLeaseIds],
   );
 
-  const monthly = useMemo(() => {
-    const byMonth = new Map<string, number>();
+  const series = useMemo(() => {
+    const keyFn = granularity === "weekly" ? weekKey : monthKey;
+    const buckets = new Map<string, number>();
     for (const r of landlordReleases) {
-      const key = monthKey(r.timestamp);
-      byMonth.set(key, (byMonth.get(key) ?? 0) + (r.amount ?? 0));
+      const key = keyFn(r.timestamp);
+      buckets.set(key, (buckets.get(key) ?? 0) + (r.amount ?? 0));
     }
-    return [...byMonth.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [landlordReleases]);
+    return [...buckets.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [landlordReleases, granularity]);
 
-  const maxMonthly = Math.max(1, ...monthly.map(([, amount]) => amount));
+  const maxSeries = Math.max(1, ...series.map(([, amount]) => amount));
+  const labelFor = granularity === "weekly" ? weekLabel : monthLabel;
 
   const leaseMap = useMemo(() => {
     const map = new Map<string, Lease>();
@@ -113,26 +155,53 @@ export default function EarningsPage() {
       </div>
 
       <div>
-        <p className="text-sm font-semibold text-ink">Monthly income</p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold text-ink">
+            {granularity === "weekly" ? "Weekly income" : "Monthly income"}
+          </p>
+          {!MOCK_MODE && (
+            <div
+              role="group"
+              aria-label="Income period"
+              className="inline-flex rounded-full border border-forest-100 bg-cream-100 p-0.5 text-xs font-medium"
+            >
+              {(["weekly", "monthly"] as const).map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => chooseGranularity(g)}
+                  aria-pressed={granularity === g}
+                  className={`rounded-full px-3 py-1 capitalize transition-colors ${
+                    granularity === g
+                      ? "bg-forest-500 text-cream-50 shadow-sm"
+                      : "text-ink-soft hover:text-ink"
+                  }`}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         {MOCK_MODE ? (
           <p className="mt-2 text-sm text-ink-soft">
-            Testnet mock mode has no per-release timestamps, so a monthly breakdown isn&apos;t available — the
-            per-property total below is still accurate.
+            Testnet mock mode has no per-release timestamps, so an income-over-time breakdown isn&apos;t
+            available — the per-property total below is still accurate.
           </p>
         ) : releases === null ? (
           <Skeleton className="mt-3 h-32 w-full" />
-        ) : monthly.length === 0 ? (
+        ) : series.length === 0 ? (
           <p className="mt-2 text-sm text-ink-soft">No releases yet.</p>
         ) : (
           <div className="mt-4 flex items-end gap-3 overflow-x-auto pb-2">
-            {monthly.map(([key, amount]) => (
+            {series.map(([key, amount]) => (
               <div key={key} className="flex shrink-0 flex-col items-center gap-1">
                 <span className="text-xs font-medium text-ink">{formatUSDC(amount)}</span>
                 <div
                   className="w-10 rounded-t-md bg-forest-400"
-                  style={{ height: `${Math.max(8, (amount / maxMonthly) * 120)}px` }}
+                  style={{ height: `${Math.max(8, (amount / maxSeries) * 120)}px` }}
                 />
-                <span className="text-[11px] text-ink-soft">{monthLabel(key)}</span>
+                <span className="text-[11px] text-ink-soft">{labelFor(key)}</span>
               </div>
             ))}
           </div>
