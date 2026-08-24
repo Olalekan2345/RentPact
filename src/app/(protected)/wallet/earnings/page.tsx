@@ -14,17 +14,6 @@ import { getActivityFeed, listLeasesForLandlord, type ActivityItem, type Lease }
 import { bucketSeries, monthLabel, weekLabel, type Granularity } from "@/lib/earningsBuckets";
 import { exportEarningsExcel } from "@/lib/earningsExcel";
 
-function downloadCsv(filename: string, rows: string[][]) {
-  const csv = rows.map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 export default function EarningsPage() {
   const { session, isLoading } = useAuth();
   const router = useRouter();
@@ -93,30 +82,6 @@ export default function EarningsPage() {
     [leases],
   );
 
-  const handleExportCsv = () => {
-    if (!leases) return;
-    if (!MOCK_MODE && landlordReleases.length > 0) {
-      const rows: string[][] = [["Date", "Property", "Amount (USDC)", "Tx Hash"]];
-      for (const r of landlordReleases) {
-        const lease = leaseMap.get(r.leaseId);
-        rows.push([
-          new Date(r.timestamp).toISOString(),
-          lease?.propertyAddress ?? r.leaseId,
-          String(r.amount ?? 0),
-          r.txHash ?? "",
-        ]);
-      }
-      downloadCsv("rentpact-earnings.csv", rows);
-      return;
-    }
-
-    const rows: string[][] = [["Property", "Periods Released", "Total Received (USDC)"]];
-    for (const l of leases) {
-      rows.push([l.propertyAddress, String(l.periodsReleased), String(l.amountPerPeriod * l.periodsReleased)]);
-    }
-    downloadCsv("rentpact-earnings.csv", rows);
-  };
-
   const handleExportExcel = async () => {
     if (!leases || !session) return;
     setExcelBusy(true);
@@ -158,17 +123,14 @@ export default function EarningsPage() {
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          <Link href="/reports/earnings">
-            <Button variant="secondary" size="sm">
-              PDF
-            </Button>
-          </Link>
           <Button variant="secondary" size="sm" onClick={handleExportExcel} disabled={leases === null || excelBusy}>
             {excelBusy ? "Preparing…" : "Excel"}
           </Button>
-          <Button variant="secondary" size="sm" onClick={handleExportCsv} disabled={leases === null}>
-            CSV
-          </Button>
+          <Link href="/reports/earnings">
+            <Button variant="secondary" size="sm">
+              PDF report
+            </Button>
+          </Link>
         </div>
       </div>
 
