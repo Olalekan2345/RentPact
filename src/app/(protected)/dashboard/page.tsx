@@ -8,6 +8,7 @@ import { LeaseCard } from "@/components/LeaseCard";
 import { PropertyImage } from "@/components/PropertyImage";
 import { EmptyState } from "@/components/EmptyState";
 import { GettingStarted } from "@/components/GettingStarted";
+import { WelcomeBack } from "@/components/WelcomeBack";
 import { ArrowLink, Badge, Button, Card, CardContent, CountUp, SkeletonText, Skeleton } from "@/components/ui";
 import { CurrencyEquivalent } from "@/components/CurrencyEquivalent";
 import { UsdcAmount } from "@/components/UsdcAmount";
@@ -166,6 +167,11 @@ export default function DashboardPage() {
     landlordLeases.length === 0 &&
     myListings.length === 0;
 
+  // A returning user: everything loaded and they already have activity. Gets a
+  // "welcome back" greeting instead of the first-run onboarding card.
+  const isReturningUser =
+    tenantLeases !== null && landlordLeases !== null && myListings !== null && !isNewUser;
+
   if (isLoading || !session) {
     return (
       <div className="min-h-screen bg-cream">
@@ -181,6 +187,7 @@ export default function DashboardPage() {
 
   return (
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
+        <WelcomeBack show={isReturningUser} />
         <GettingStarted show={isNewUser} />
 
         <h1 className="text-3xl text-ink">Your dashboard</h1>
