@@ -12,6 +12,7 @@ import { formatUSDC } from "@/lib/format";
 import { MOCK_MODE } from "@/lib/circle";
 import { getActivityFeed, listLeasesForLandlord, type ActivityItem, type Lease } from "@/lib/leaseData";
 import { bucketSeries, monthLabel, weekLabel, type Granularity } from "@/lib/earningsBuckets";
+import { exportEarningsExcel } from "@/lib/earningsExcel";
 
 function downloadCsv(filename: string, rows: string[][]) {
   const csv = rows.map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(",")).join("\n");
@@ -30,6 +31,7 @@ export default function EarningsPage() {
   const [leases, setLeases] = useState<Lease[] | null>(null);
   const [releases, setReleases] = useState<ActivityItem[] | null>(null);
   const [granularity, setGranularity] = useState<Granularity>("monthly");
+  const [excelBusy, setExcelBusy] = useState(false);
 
   useEffect(() => {
     if (!isLoading && !session) router.push("/auth");
@@ -115,6 +117,35 @@ export default function EarningsPage() {
     downloadCsv("rentpact-earnings.csv", rows);
   };
 
+  const handleExportExcel = async () => {
+    if (!leases || !session) return;
+    setExcelBusy(true);
+    try {
+      await exportEarningsExcel({
+        email: session.email,
+        totalCumulative,
+        monthlySeries: bucketSeries(landlordReleases, "monthly"),
+        donutItems,
+        leases: leases.map((l) => ({
+          propertyAddress: l.propertyAddress,
+          periodsReleased: l.periodsReleased,
+          totalPeriods: l.totalPeriods,
+          total: l.amountPerPeriod * l.periodsReleased,
+        })),
+        releases: MOCK_MODE
+          ? []
+          : landlordReleases.map((r) => ({
+              timestamp: r.timestamp,
+              property: leaseMap.get(r.leaseId)?.propertyAddress ?? r.leaseId,
+              amount: r.amount ?? 0,
+              txHash: r.txHash,
+            })),
+      });
+    } finally {
+      setExcelBusy(false);
+    }
+  };
+
   if (isLoading || !session) return null;
 
   return (
@@ -126,14 +157,17 @@ export default function EarningsPage() {
             <UsdcAmount amount={totalCumulative} iconSize={18} />
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           <Link href="/reports/earnings">
             <Button variant="secondary" size="sm">
-              PDF report
+              PDF
             </Button>
           </Link>
+          <Button variant="secondary" size="sm" onClick={handleExportExcel} disabled={leases === null || excelBusy}>
+            {excelBusy ? "Preparing…" : "Excel"}
+          </Button>
           <Button variant="secondary" size="sm" onClick={handleExportCsv} disabled={leases === null}>
-            Export CSV
+            CSV
           </Button>
         </div>
       </div>

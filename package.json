@@ -15,6 +15,7 @@
     "buffer": "^6.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "exceljs": "^4.4.0",
     "framer-motion": "^12.42.2",
     "ieee754": "^1.2.1",
     "next": "14.2.35",
