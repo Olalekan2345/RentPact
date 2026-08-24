@@ -11,32 +11,7 @@ import { PropertyDonut } from "@/components/earnings/PropertyDonut";
 import { formatUSDC } from "@/lib/format";
 import { MOCK_MODE } from "@/lib/circle";
 import { getActivityFeed, listLeasesForLandlord, type ActivityItem, type Lease } from "@/lib/leaseData";
-
-function monthKey(timestamp: number): string {
-  const d = new Date(timestamp);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function monthLabel(key: string): string {
-  const [year, month] = key.split("-").map(Number);
-  return new Date(year, month - 1, 1).toLocaleDateString(undefined, { month: "short", year: "2-digit" });
-}
-
-type Granularity = "weekly" | "monthly";
-
-/** Monday 00:00 of the week a timestamp falls in — the bucket key for weekly grouping. */
-function weekKey(timestamp: number): string {
-  const d = new Date(timestamp);
-  d.setHours(0, 0, 0, 0);
-  const mondayOffset = (d.getDay() + 6) % 7; // Sun=0 → 6, Mon=1 → 0, …
-  d.setDate(d.getDate() - mondayOffset);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function weekLabel(key: string): string {
-  const [year, month, day] = key.split("-").map(Number);
-  return new Date(year, month - 1, day).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
+import { bucketSeries, monthLabel, weekLabel, type Granularity } from "@/lib/earningsBuckets";
 
 function downloadCsv(filename: string, rows: string[][]) {
   const csv = rows.map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(",")).join("\n");
@@ -95,15 +70,7 @@ export default function EarningsPage() {
     [releases, landlordLeaseIds],
   );
 
-  const series = useMemo(() => {
-    const keyFn = granularity === "weekly" ? weekKey : monthKey;
-    const buckets = new Map<string, number>();
-    for (const r of landlordReleases) {
-      const key = keyFn(r.timestamp);
-      buckets.set(key, (buckets.get(key) ?? 0) + (r.amount ?? 0));
-    }
-    return [...buckets.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [landlordReleases, granularity]);
+  const series = useMemo(() => bucketSeries(landlordReleases, granularity), [landlordReleases, granularity]);
 
   const maxSeries = Math.max(1, ...series.map(([, amount]) => amount));
   const labelFor = granularity === "weekly" ? weekLabel : monthLabel;
@@ -159,9 +126,16 @@ export default function EarningsPage() {
             <UsdcAmount amount={totalCumulative} iconSize={18} />
           </p>
         </div>
-        <Button variant="secondary" size="sm" onClick={handleExportCsv} disabled={leases === null}>
-          Export CSV
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Link href="/reports/earnings">
+            <Button variant="secondary" size="sm">
+              PDF report
+            </Button>
+          </Link>
+          <Button variant="secondary" size="sm" onClick={handleExportCsv} disabled={leases === null}>
+            Export CSV
+          </Button>
+        </div>
       </div>
 
       <div>
