@@ -8,8 +8,7 @@ import { cn } from "@/lib/utils";
 const TABS = [
   { href: "/wallet", label: "Overview" },
   { href: "/wallet/transactions", label: "Transactions" },
-  { href: "/wallet/earnings", label: "Earnings" },
-  { href: "/wallet/spending", label: "Spending" },
+  { href: "/wallet/earnings", label: "Earnings & Spending" },
 ] as const;
 
 export default function WalletLayout({ children }: { children: ReactNode }) {
@@ -19,7 +18,7 @@ export default function WalletLayout({ children }: { children: ReactNode }) {
       <div className="mx-auto max-w-2xl px-4 py-10 sm:px-8">
         <h1 className="text-3xl text-ink">Wallet</h1>
 
-        <div className="mt-6 flex gap-1 border-b border-forest-100 pb-px">
+        <div className="mt-6 flex gap-1 overflow-x-auto border-b border-forest-100 pb-px">
           {TABS.map((tab) => {
             const isActive = pathname === tab.href;
             return (

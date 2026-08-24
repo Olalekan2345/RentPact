@@ -108,7 +108,7 @@ export const STATEMENT_LABELS: Record<StatementVariant, StatementLabels> = {
     ledgerTitle: "Release ledger",
     footerNote:
       "All amounts in USDC, settled on the Arc network. Figures reflect rent released from escrow to the landlord and are verifiable on-chain via each transaction hash.",
-    backHref: "/wallet/earnings",
+    backHref: "/wallet/earnings?view=earnings",
     backLabel: "← Back to earnings",
     reportPath: "/reports/earnings",
     granularityKeyBase: "rentpact:earnings-granularity:v1",
@@ -130,7 +130,7 @@ export const STATEMENT_LABELS: Record<StatementVariant, StatementLabels> = {
     ledgerTitle: "Payment ledger",
     footerNote:
       "All amounts in USDC, settled on the Arc network. Figures reflect rent paid from escrow to the landlord and are verifiable on-chain via each transaction hash.",
-    backHref: "/wallet/spending",
+    backHref: "/wallet/earnings?view=spending",
     backLabel: "← Back to spending",
     reportPath: "/reports/spending",
     granularityKeyBase: "rentpact:spending-granularity:v1",
