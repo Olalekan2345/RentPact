@@ -745,12 +745,32 @@ export async function getLeaseActivity(leaseId: bigint): Promise<ActivityItem[]>
  * carry. One getTransaction per hash, serialized by arcFriendly; a hash that
  * can't be read is simply omitted rather than failing the whole set.
  */
+const ARCSCAN_BASE = "https://testnet.arcscan.app";
+
+interface ScanInternalTx {
+  from?: { hash?: string };
+  to?: { hash?: string };
+}
+
+/**
+ * Who ACTUALLY triggered each transaction. RentPact txs are gasless, so the
+ * on-chain tx.from is Circle's relayer/bundler — never the user. The real
+ * caller is the INTERNAL call into the escrow (the user's smart-contract
+ * wallet), which we read from the Arcscan indexer's internal-transactions.
+ * That address matches the lease's tenant or landlord exactly.
+ */
 export async function getTransactionSenders(hashes: string[]): Promise<Record<string, Address>> {
+  const escrow = escrowAddress?.toLowerCase();
+  if (!escrow) return {};
   const results = await Promise.all(
     hashes.map(async (h) => {
       try {
-        const tx = await publicClient.getTransaction({ hash: h as Hex });
-        return [h, tx.from as Address] as const;
+        const res = await fetch(`${ARCSCAN_BASE}/api/v2/transactions/${h}/internal-transactions`);
+        if (!res.ok) return [h, null] as const;
+        const body: { items?: ScanInternalTx[] } = await res.json();
+        const call = (body.items ?? []).find((x) => (x.to?.hash ?? "").toLowerCase() === escrow);
+        const from = call?.from?.hash;
+        return [h, from ? (from as Address) : null] as const;
       } catch {
         return [h, null] as const;
       }

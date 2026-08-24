@@ -13,6 +13,7 @@ import { FREQUENCY_OPTIONS } from "@/lib/contracts/frequency";
 import { fetchConstitution, type ConstitutionDoc } from "@/lib/constitution";
 import { fetchListingIdForLease, fetchListing, type Listing } from "@/lib/listings";
 import { fetchMoveOutCondition, type MoveOutCondition } from "@/lib/moveOut";
+import { getLeaseMetadata, type LeaseMetadata } from "@/lib/leaseMetadataStore";
 import { fetchDisputeRulingsForLease, type DisputeRulingRecord } from "@/lib/disputeRuling";
 import { CONDITION_AREAS } from "@/lib/condition";
 import { fetchThread, type Message } from "@/lib/messages";
@@ -68,6 +69,7 @@ export default function LeaseRecordPage() {
   const [rulings, setRulings] = useState<DisputeRulingRecord[]>([]);
   const [constitution, setConstitution] = useState<ConstitutionDoc | null>(null);
   const [thread, setThread] = useState<Message[]>([]);
+  const [meta, setMeta] = useState<LeaseMetadata | null>(null);
 
   useEffect(() => {
     if (!isLoading && !session) router.push("/auth");
@@ -82,6 +84,7 @@ export default function LeaseRecordPage() {
     fetchDisputeRulingsForLease(id).then(setRulings);
     fetchConstitution().then(setConstitution);
     fetchThread(id).then(setThread);
+    getLeaseMetadata(id).then(setMeta);
     fetchListingIdForLease(id).then((lid) => {
       if (lid) fetchListing(lid).then(setListing);
     });
@@ -279,14 +282,21 @@ export default function LeaseRecordPage() {
                 <tbody>
                   {releases.map((r) => {
                     const by = r.txHash ? senders[r.txHash] : undefined;
+                    const byLower = by?.toLowerCase();
+                    const byRole =
+                      byLower && meta?.tenantAddress?.toLowerCase() === byLower
+                        ? "Tenant"
+                        : byLower && meta?.landlordAddress?.toLowerCase() === byLower
+                          ? "Landlord"
+                          : null;
                     return (
                       <tr key={r.id} className="border-b border-forest-100/70">
                         <td className="py-2 pr-3 text-ink">{formatDate(new Date(r.timestamp), "long")}</td>
                         <td className="py-2 pr-3 font-medium text-ink">{r.amount != null ? usd(r.amount) : "—"}</td>
-                        <td className="py-2 pr-3 font-mono text-xs text-ink-muted">
+                        <td className="py-2 pr-3 text-xs text-ink-muted">
                           {by ? (
-                            <a href={explorerAddressUrl(by)} className="underline">
-                              {shortAddr(by)}
+                            <a href={explorerAddressUrl(by)} title={by} className="underline">
+                              {byRole ?? <span className="font-mono">{shortAddr(by)}</span>}
                             </a>
                           ) : (
                             "—"
