@@ -9,6 +9,7 @@ const TABS = [
   { href: "/wallet", label: "Overview" },
   { href: "/wallet/transactions", label: "Transactions" },
   { href: "/wallet/earnings", label: "Earnings" },
+  { href: "/wallet/spending", label: "Spending" },
 ] as const;
 
 export default function WalletLayout({ children }: { children: ReactNode }) {

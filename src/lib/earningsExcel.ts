@@ -9,8 +9,10 @@
 import { formatDate } from "@/lib/format";
 import { monthLabel } from "@/lib/earningsBuckets";
 import { growthChartSvg, donutChartSvg, type ChartSvg } from "@/lib/earningsChartSvg";
+import { STATEMENT_LABELS, type StatementVariant } from "@/lib/statement";
 
 export interface EarningsExcelInput {
+  variant: StatementVariant;
   email: string;
   totalCumulative: number;
   monthlySeries: [string, number][];
@@ -51,12 +53,15 @@ async function svgToPng(chart: ChartSvg, targetWidth: number): Promise<{ dataUrl
 
 const APPROX_ROW_PX = 20;
 
-export async function exportEarningsExcel(data: EarningsExcelInput): Promise<void> {
+export async function exportStatementExcel(data: EarningsExcelInput): Promise<void> {
+  const labels = STATEMENT_LABELS[data.variant];
   const mod = await import("exceljs");
   const ExcelJS = (mod as unknown as { default?: typeof import("exceljs") }).default ?? mod;
 
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet("Earnings", { views: [{ showGridLines: false }] });
+  const ws = wb.addWorksheet(data.variant === "spending" ? "Spending" : "Earnings", {
+    views: [{ showGridLines: false }],
+  });
 
   ws.getColumn(1).width = 44;
   ws.getColumn(2).width = 16;
@@ -67,7 +72,7 @@ export async function exportEarningsExcel(data: EarningsExcelInput): Promise<voi
   // ── header ──
   ws.mergeCells("A1:E1");
   const title = ws.getCell("A1");
-  title.value = "RentPact — Earnings statement";
+  title.value = labels.excelStatementTitle;
   title.font = { name: "Segoe UI", size: 16, bold: true, color: { argb: "FF0B3D2E" } };
   ws.getCell("A2").value = data.email;
   ws.getCell("A2").font = { color: { argb: "FF4A4640" } };
@@ -102,7 +107,7 @@ export async function exportEarningsExcel(data: EarningsExcelInput): Promise<voi
   row += 1;
 
   const propHead = ws.getRow(row);
-  propHead.values = ["Property", "Periods", "Received (USDC)"];
+  propHead.values = ["Property", "Periods", `${labels.tableValueHeader} (USDC)`];
   forestHeader(propHead, 3);
   row += 1;
 
@@ -124,9 +129,9 @@ export async function exportEarningsExcel(data: EarningsExcelInput): Promise<voi
   totalAmt.font = { bold: true, color: { argb: "FF0B3D2E" } };
   row += 2;
 
-  // ── release ledger ──
+  // ── ledger ──
   if (data.releases.length > 0) {
-    ws.getCell(`A${row}`).value = "Release ledger";
+    ws.getCell(`A${row}`).value = labels.ledgerTitle;
     ws.getCell(`A${row}`).font = { bold: true, size: 12, color: { argb: "FF0B3D2E" } };
     row += 1;
 
@@ -148,8 +153,7 @@ export async function exportEarningsExcel(data: EarningsExcelInput): Promise<voi
     }
   }
 
-  ws.getCell(`A${row + 1}`).value =
-    "All amounts in USDC, settled on the Arc network. Verifiable on-chain via each transaction hash.";
+  ws.getCell(`A${row + 1}`).value = labels.footerNote;
   ws.getCell(`A${row + 1}`).font = { italic: true, size: 9, color: { argb: "FF6E6A63" } };
 
   const buffer = await wb.xlsx.writeBuffer();
@@ -159,7 +163,7 @@ export async function exportEarningsExcel(data: EarningsExcelInput): Promise<voi
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "rentpact-earnings.xlsx";
+  a.download = labels.excelFilename;
   a.click();
   URL.revokeObjectURL(url);
 }

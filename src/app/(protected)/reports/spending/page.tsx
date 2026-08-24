@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { StatementDocument } from "@/components/statement/StatementDocument";
 import { buildStatement } from "@/lib/statement";
-import { getActivityFeed, listLeasesForLandlord, type ActivityItem, type Lease } from "@/lib/leaseData";
+import { getActivityFeed, listLeasesForTenant, type ActivityItem, type Lease } from "@/lib/leaseData";
 
-export default function EarningsReportPage() {
+export default function SpendingReportPage() {
   const { session, isLoading } = useAuth();
   const router = useRouter();
   const [leases, setLeases] = useState<Lease[] | null>(null);
@@ -19,7 +19,7 @@ export default function EarningsReportPage() {
 
   useEffect(() => {
     if (!session) return;
-    listLeasesForLandlord(session, false).then(setLeases);
+    listLeasesForTenant(session, false).then(setLeases);
     getActivityFeed(session, 1000).then((items) => setReleases(items.filter((i) => i.type === "release")));
   }, [session]);
 
@@ -29,7 +29,7 @@ export default function EarningsReportPage() {
 
   return (
     <StatementDocument
-      variant="earnings"
+      variant="spending"
       email={session.email}
       data={data}
       loading={leases === null || releases === null}
