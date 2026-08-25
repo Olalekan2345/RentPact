@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { Button, Card, CardContent } from "@/components/ui";
 import { exportAccountData, deleteAccount } from "@/lib/account";
@@ -84,13 +85,22 @@ export default function LegalSettingsPage() {
           <div>
             <p className="text-sm font-medium text-ink">Export your data</p>
             <p className="mt-1 text-xs text-ink-soft">
-              Downloads a JSON file of your profile, listings, messages, reviews received, and preferences.
+              Your profile, listings, messages, reviews received, and preferences. Download the JSON for a
+              complete, machine-readable copy (portable to another service or kept as a backup), or a readable
+              PDF summary you can open and print.
             </p>
           </div>
           {exportError && <p className="text-sm text-terracotta-500">{exportError}</p>}
-          <Button variant="secondary" size="sm" className="w-fit" onClick={handleExport} disabled={exporting}>
-            {exporting ? "Preparing…" : "Download my data"}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={handleExport} disabled={exporting}>
+              {exporting ? "Preparing…" : "Download JSON"}
+            </Button>
+            <Link href="/reports/account">
+              <Button variant="secondary" size="sm">
+                Readable PDF
+              </Button>
+            </Link>
+          </div>
         </CardContent>
       </Card>
 
