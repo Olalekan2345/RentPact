@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { Card, CardContent } from "@/components/ui";
 import { Logo } from "@/components/Logo";
@@ -19,7 +20,13 @@ export default function AuthPage() {
     <main className="flex min-h-screen items-center justify-center bg-cream px-4 py-16">
       <div className="w-full max-w-md">
         <div className="mb-8 flex flex-col items-center text-center">
-          <Logo size={36} wordmarkClassName="text-forest-500" />
+          <Link
+            href="/"
+            aria-label="Back to RentPact home"
+            className="rounded-md transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-300 focus-visible:ring-offset-2 focus-visible:ring-offset-cream"
+          >
+            <Logo size={36} wordmarkClassName="text-forest-500" />
+          </Link>
           <h1 className="mt-5 text-3xl text-ink">Sign in to RentPact</h1>
           <p className="mt-2 text-ink-muted">Continue with Google to access your account.</p>
         </div>
