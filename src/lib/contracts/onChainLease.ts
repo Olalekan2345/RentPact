@@ -495,7 +495,21 @@ export interface ReputationStats {
  * fabricated, never stored separately: re-derived fresh from the chain
  * every time, so it can't drift from what actually happened.
  */
-export async function getReputationStats(address: Address): Promise<ReputationStats> {
+export interface ReputationCompletions {
+  completedAsTenant: number;
+  completedAsLandlord: number;
+  totalAsTenant: number;
+  totalAsLandlord: number;
+}
+
+/**
+ * The completion half of a wallet's reputation, derived from its leases (a
+ * Postgres id lookup + one bounded read per lease). The dispute half is
+ * computed separately from the Arcscan indexer (see /api/reputation-disputes):
+ * a full DisputeRaised/DisputeResolved scan over the rate-limited Arc RPC took
+ * minutes and left the profile's reputation card stuck loading.
+ */
+export async function getReputationCompletions(address: Address): Promise<ReputationCompletions> {
   const [tenantLeaseIds, landlordLeaseIds] = await Promise.all([
     findLeaseIdsForAddress(address, "tenant"),
     findLeaseIdsForAddress(address, "landlord"),
@@ -508,30 +522,11 @@ export async function getReputationStats(address: Address): Promise<ReputationSt
 
   const isCompleted = (l: OnChainLease) => !l.cancelled && l.periodsReleased >= l.totalPeriods;
 
-  const disputeRaisedLogs = await queryEventsChunked("DisputeRaised", { tenant: address }, (log) =>
-    log.args.leaseId !== undefined && (log.args.reason as string) !== CAUTION_CLAIM_DISPUTE_REASON
-      ? (log.args.leaseId as bigint)
-      : null,
-  );
-  const raisedLeaseIdSet = new Set(disputeRaisedLogs.map((id) => id.toString()));
-
-  const disputeResolvedLogs = await queryEventsChunked("DisputeResolved", undefined, (log) =>
-    log.args.leaseId !== undefined
-      ? { leaseId: log.args.leaseId as bigint, landlordBps: Number(log.args.landlordBps as number) }
-      : null,
-  );
-  const ownResolutions = disputeResolvedLogs.filter((r) => raisedLeaseIdSet.has(r.leaseId.toString()));
-
-  // "Won" = tenant kept the majority of the disputed funds (landlordBps < 50%).
   return {
     completedAsTenant: tenantLeases.filter(isCompleted).length,
     completedAsLandlord: landlordLeases.filter(isCompleted).length,
     totalAsTenant: tenantLeases.length,
     totalAsLandlord: landlordLeases.length,
-    disputesRaised: disputeRaisedLogs.length,
-    disputesWonAsTenant: ownResolutions.filter((r) => r.landlordBps < BPS_DENOMINATOR / 2).length,
-    disputesLostAsTenant: ownResolutions.filter((r) => r.landlordBps >= BPS_DENOMINATOR / 2).length,
-    disputesPending: disputeRaisedLogs.length - ownResolutions.length,
   };
 }
 

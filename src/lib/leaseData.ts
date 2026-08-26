@@ -35,7 +35,7 @@ import {
   type CautionClaimRecord,
   toBaseUnits,
   BPS_DENOMINATOR,
-  getReputationStats as getOnChainReputationStats,
+  getReputationCompletions,
   getLeaseActivity as getOnChainLeaseActivity,
   getTransactionSenders as getOnChainTransactionSenders,
   type ReputationStats,
@@ -905,9 +905,46 @@ export async function getCautionReturnRate(params: { email: string; address: Add
  * Real mode scans actual contract events. Mock mode computes the same shape
  * from the localStorage lease history for the current browser session.
  */
+type DisputeReputation = Pick<
+  ReputationStats,
+  "disputesRaised" | "disputesWonAsTenant" | "disputesLostAsTenant" | "disputesPending"
+>;
+
+/**
+ * Dispute counts from the Arcscan-backed route (fast), not the rate-limited
+ * RPC. Best-effort: on any failure — or on the server, where the relative fetch
+ * can't resolve — it returns zeros so the reputation card still renders.
+ */
+async function fetchDisputeReputation(address: Address): Promise<DisputeReputation> {
+  const zero: DisputeReputation = {
+    disputesRaised: 0,
+    disputesWonAsTenant: 0,
+    disputesLostAsTenant: 0,
+    disputesPending: 0,
+  };
+  if (typeof window === "undefined") return zero;
+  try {
+    const res = await fetch(`/api/reputation-disputes?address=${encodeURIComponent(address)}`);
+    if (!res.ok) return zero;
+    const data = await res.json();
+    return {
+      disputesRaised: Number(data.disputesRaised ?? 0),
+      disputesWonAsTenant: Number(data.disputesWonAsTenant ?? 0),
+      disputesLostAsTenant: Number(data.disputesLostAsTenant ?? 0),
+      disputesPending: Number(data.disputesPending ?? 0),
+    };
+  } catch {
+    return zero;
+  }
+}
+
 export async function getReputationStats(params: { email: string; address: Address }): Promise<ReputationStats> {
   if (!MOCK_MODE) {
-    return cachedChainRead(`reputation:${params.address}`, () => getOnChainReputationStats(params.address));
+    const [completions, disputes] = await Promise.all([
+      cachedChainRead(`reputation:${params.address}`, () => getReputationCompletions(params.address)),
+      fetchDisputeReputation(params.address),
+    ]);
+    return { ...completions, ...disputes };
   }
 
   const tenantLeases = mockStore.listLeasesForTenant(params.email);
