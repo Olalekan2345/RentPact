@@ -13,11 +13,11 @@ import { useInstall } from "@/lib/pwa";
  */
 export function InstallBanner() {
   const pathname = usePathname();
-  const { mounted, platform, standalone, canPrompt, promptInstall } = useInstall();
+  const { mounted, platform, installed, canPrompt, promptInstall, markInstalled } = useInstall();
 
   // Render nothing on the server / first client paint (avoids a flash and a
-  // hydration mismatch), once installed, or on the install page itself.
-  if (!mounted || standalone || pathname === "/settings/install") return null;
+  // hydration mismatch), once installed/acknowledged, or on the install page.
+  if (!mounted || installed || pathname === "/settings/install") return null;
 
   const message =
     platform === "ios"
@@ -47,6 +47,13 @@ export function InstallBanner() {
           >
             {canPrompt ? "How" : "How to install"}
           </Link>
+          <button
+            type="button"
+            onClick={markInstalled}
+            className="text-xs text-forest-600/70 underline underline-offset-2 hover:text-forest-600"
+          >
+            Already installed?
+          </button>
         </div>
       </div>
     </div>
