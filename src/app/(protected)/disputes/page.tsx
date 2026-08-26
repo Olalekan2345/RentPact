@@ -8,7 +8,15 @@ import { PropertyImage } from "@/components/PropertyImage";
 import { Badge, Card, CardContent, Skeleton } from "@/components/ui";
 import { formatUSDC, formatDate } from "@/lib/format";
 import { UsdcAmount } from "@/components/UsdcAmount";
-import { getDisputeOverview, type ActiveDisputeSummary, type ResolvedDisputeSummary, type DisputeTier } from "@/lib/disputes";
+import {
+  getDisputeOverview,
+  getArbiterActiveDisputes,
+  type ActiveDisputeSummary,
+  type ArbiterDisputeSummary,
+  type ResolvedDisputeSummary,
+  type DisputeTier,
+} from "@/lib/disputes";
+import { isArbiter } from "@/lib/contracts/rentPactEscrow";
 import { DAY_MS, HOUR_MS } from "@/lib/constitution";
 
 const TIER_BADGE: Record<DisputeTier, { label: string; variant: "neutral" | "gold" | "terracotta" }> = {
@@ -25,7 +33,11 @@ const OUTCOME_BADGE = (landlordBps: number) => {
   return { label: `Split ${pct}/${100 - Number(pct)}`, variant: "neutral" as const };
 };
 
-function countdownLabel(dispute: ActiveDisputeSummary): string {
+function countdownLabel(dispute: {
+  tier: DisputeTier;
+  settlementDeadline: number;
+  arbitrationDeadline: number;
+}): string {
   const now = Date.now();
   if (dispute.tier === "settlement") {
     const ms = dispute.settlementDeadline - now;
@@ -82,6 +94,45 @@ function ActiveDisputeCard({ dispute }: { dispute: ActiveDisputeSummary }) {
   );
 }
 
+function ArbiterDisputeCard({ dispute }: { dispute: ArbiterDisputeSummary }) {
+  const { lease } = dispute;
+  const badge = TIER_BADGE[dispute.tier];
+  const awaitingRuling = dispute.tier === "arbitration" || dispute.tier === "overdue";
+
+  return (
+    <Link
+      href={`/leases/${lease.id}/dispute`}
+      className="block overflow-hidden rounded-lg border border-forest-100/60 bg-cream-100 shadow-card transition-shadow hover:shadow-lifted"
+    >
+      <div className="flex gap-4 p-4">
+        <PropertyImage
+          seed={lease.id}
+          propertyType={lease.propertyType}
+          overrideUrl={lease.photoUrl}
+          alt={lease.propertyAddress}
+          className="h-20 w-20 shrink-0 rounded-md"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="truncate font-serif text-base text-ink">{lease.propertyAddress}</h3>
+            <Badge variant={badge.variant} className="shrink-0">
+              {badge.label}
+            </Badge>
+          </div>
+          <p className="mt-1 text-sm font-semibold text-gold-600">{formatUSDC(dispute.frozenAmount)} USDC frozen</p>
+          <p className="mt-1 text-xs text-terracotta-500">{countdownLabel(dispute)}</p>
+          <p className="mt-1.5 text-xs text-ink-soft">Tenant: {lease.tenantEmail}</p>
+          <p className="text-xs text-ink-soft">Landlord: {lease.landlordEmail}</p>
+          <p className="mt-0.5 text-xs text-ink-muted">{reasonSummary(lease.disputeReason)}</p>
+          {awaitingRuling && (
+            <p className="mt-1.5 text-xs font-semibold text-terracotta-600">Awaiting your ruling →</p>
+          )}
+        </div>
+      </div>
+    </Link>
+  );
+}
+
 function ResolvedDisputeRow({ dispute }: { dispute: ResolvedDisputeSummary }) {
   const badge = OUTCOME_BADGE(dispute.landlordBps);
   return (
@@ -104,7 +155,9 @@ export default function DisputesPage() {
   const { session, isLoading } = useAuth();
   const router = useRouter();
   const [overview, setOverview] = useState<Awaited<ReturnType<typeof getDisputeOverview>> | null>(null);
+  const [arbiterDisputes, setArbiterDisputes] = useState<ArbiterDisputeSummary[] | null>(null);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const amArbiter = !!session && isArbiter(session.address);
 
   useEffect(() => {
     if (!isLoading && !session) router.push("/auth");
@@ -112,7 +165,11 @@ export default function DisputesPage() {
 
   useEffect(() => {
     if (!session) return;
-    getDisputeOverview(session).then(setOverview);
+    if (isArbiter(session.address)) {
+      getArbiterActiveDisputes(session.address).then(setArbiterDisputes);
+    } else {
+      getDisputeOverview(session).then(setOverview);
+    }
   }, [session]);
 
   const avgResolutionLabel = useMemo(() => {
@@ -123,6 +180,65 @@ export default function DisputesPage() {
   }, [overview]);
 
   if (isLoading || !session) return null;
+
+  if (amArbiter) {
+    const awaitingRuling =
+      arbiterDisputes?.filter((d) => d.tier === "arbitration" || d.tier === "overdue").length ?? 0;
+    const frozenTotal = arbiterDisputes?.reduce((sum, d) => sum + d.frozenAmount, 0) ?? 0;
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-10 sm:px-8">
+        <div className="flex items-center gap-2">
+          <h1 className="text-3xl text-ink">Disputes</h1>
+          <Badge variant="terracotta">Arbiter</Badge>
+        </div>
+        <p className="mt-1 text-ink-muted">
+          You&apos;re the platform arbiter — every active dispute, the ones awaiting your ruling first.
+        </p>
+
+        {arbiterDisputes === null ? (
+          <div className="mt-6 space-y-3">
+            <Skeleton className="h-28 w-full" />
+            <Skeleton className="h-28 w-full" />
+          </div>
+        ) : arbiterDisputes.length === 0 ? (
+          <div className="mt-10 text-center">
+            <p className="text-lg text-ink">No active disputes — nothing needs a ruling right now 🌿</p>
+          </div>
+        ) : (
+          <>
+            <div className="mt-6 grid grid-cols-3 gap-3">
+              <Card>
+                <CardContent className="p-4">
+                  <p className="text-2xl font-semibold text-ink">{arbiterDisputes.length}</p>
+                  <p className="text-xs text-ink-soft">Active disputes</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <p className="text-2xl font-semibold text-terracotta-600">{awaitingRuling}</p>
+                  <p className="text-xs text-ink-soft">Awaiting your ruling</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <p className="flex items-baseline gap-1 text-2xl font-semibold text-gold-600">
+                    <UsdcAmount amount={frozenTotal} />
+                  </p>
+                  <p className="text-xs text-ink-soft">Frozen total</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="mt-8 space-y-3">
+              {arbiterDisputes.map((d) => (
+                <ArbiterDisputeCard key={d.lease.id} dispute={d} />
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
 
   return (
       <div className="mx-auto max-w-4xl px-4 py-10 sm:px-8">

@@ -1,7 +1,7 @@
 "use client";
 
 import type { Address } from "viem";
-import { listLeasesForTenant, listLeasesForLandlord, type Lease } from "@/lib/leaseData";
+import { listLeasesForTenant, listLeasesForLandlord, getLease, type Lease } from "@/lib/leaseData";
 import { fetchActivityFeed } from "@/lib/activityEventStore";
 import { SETTLEMENT_WINDOW_MS, ARBITRATION_WINDOW_MS } from "@/lib/constitution";
 
@@ -31,6 +31,52 @@ export interface DisputeOverview {
   resolved: ResolvedDisputeSummary[];
   frozenTotal: number;
   avgResolutionMs: number | null;
+}
+
+export interface ArbiterDisputeSummary {
+  lease: Lease;
+  frozenAmount: number;
+  tier: DisputeTier;
+  raisedAt: number;
+  settlementDeadline: number;
+  arbitrationDeadline: number;
+}
+
+/**
+ * Every currently-active dispute across the platform, for the arbiter — who is
+ * not a party to any lease and so would otherwise see nothing here. Disputed
+ * lease ids come from the Arcscan indexer (fast); each lease's live state is
+ * read to keep only the ones still active, ordered so the ones awaiting a
+ * ruling (arbitration / overdue) come first.
+ */
+export async function getArbiterActiveDisputes(address: Address): Promise<ArbiterDisputeSummary[]> {
+  let leaseIds: string[] = [];
+  try {
+    const res = await fetch(`/api/arbiter-disputes?address=${encodeURIComponent(address)}`);
+    if (res.ok) leaseIds = (await res.json()).leaseIds ?? [];
+  } catch {
+    return [];
+  }
+
+  const leases = await Promise.all(leaseIds.map((id) => getLease(id, false).catch(() => null)));
+  const now = Date.now();
+  const summaries = leases
+    .filter((l): l is Lease => l !== null && l.disputeActive && l.disputeRaisedAt !== null)
+    .map((lease) => {
+      const raisedAt = lease.disputeRaisedAt as number;
+      return {
+        lease,
+        frozenAmount: lease.amountPerPeriod * (lease.totalPeriods - lease.periodsReleased),
+        tier: disputeTier(raisedAt, now),
+        raisedAt,
+        settlementDeadline: raisedAt + SETTLEMENT_WINDOW_MS,
+        arbitrationDeadline: raisedAt + SETTLEMENT_WINDOW_MS + ARBITRATION_WINDOW_MS,
+      };
+    });
+
+  const order: Record<DisputeTier, number> = { overdue: 0, arbitration: 1, tier0: 2, settlement: 3 };
+  summaries.sort((a, b) => order[a.tier] - order[b.tier] || a.raisedAt - b.raisedAt);
+  return summaries;
 }
 
 export function disputeTier(raisedAt: number, now = Date.now()): DisputeTier {
