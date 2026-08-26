@@ -23,7 +23,6 @@ import { useCautionFeeLabel } from "@/lib/cautionFee";
 import { fetchListingsForLandlord, type Listing } from "@/lib/listings";
 import { fetchProfile, type UserProfile } from "@/lib/profile";
 import { fetchReviewsFor, type Review } from "@/lib/reviews";
-import { TenancyCredentialCard } from "@/components/TenancyCredentialCard";
 
 export default function ProfilePage() {
   const { session, isLoading } = useAuth();
@@ -132,27 +131,24 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
-        {/* Tenancy credentials */}
+        {/* Tenancy credentials — summary + link to a dedicated page so the profile stays compact */}
         <Card className="mt-6">
-          <CardContent className="pt-6">
-            <p className="text-sm font-semibold text-ink">Tenancy credentials</p>
-            <p className="mt-1 text-xs text-ink-soft">
-              Soulbound, minted only on a full, clean lease completion — never earned from a cancelled or
-              early-terminated lease.
-            </p>
-            {credentials === null ? (
-              <Skeleton className="mt-3 h-32 w-full" />
-            ) : credentials.length === 0 ? (
-              <p className="mt-3 text-sm text-ink-soft">
-                Complete your first lease to earn your tenancy credential.
+          <CardContent className="flex items-center justify-between gap-3 pt-6">
+            <div>
+              <p className="text-sm font-semibold text-ink">Tenancy credentials</p>
+              <p className="mt-1 text-sm text-ink-muted">
+                {credentials === null
+                  ? "Loading…"
+                  : credentials.length === 0
+                    ? "Complete a lease to earn your first credential."
+                    : `${credentials.length} earned · soulbound proof of tenancy`}
               </p>
-            ) : (
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                {credentials.map((c) => (
-                  <TenancyCredentialCard key={c.tokenId.toString()} credential={c} />
-                ))}
-              </div>
-            )}
+            </div>
+            <Link href="/profile/credentials">
+              <Button variant="secondary" size="sm">
+                {credentials && credentials.length === 0 ? "Learn more" : "View"}
+              </Button>
+            </Link>
           </CardContent>
         </Card>
 
