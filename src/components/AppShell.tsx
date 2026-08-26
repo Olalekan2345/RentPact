@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
 import { DashboardIcon, LeasesIcon, BrowseIcon, ListPropertyIcon, MessagesIcon, WalletIcon, ProfileIcon, SettingsIcon, DisputeIcon, HelpIcon } from "@/components/icons/NavIcons";
 import { NotificationBell } from "@/components/NotificationBell";
+import { InstallBanner } from "@/components/InstallBanner";
 import { LogoMark } from "@/components/Logo";
 
 const NAV_ITEMS = [
@@ -149,7 +150,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         })}
       </nav>
 
-      <div className="min-w-0 flex-1 pb-16 md:pb-0">{children}</div>
+      <div className="min-w-0 flex-1 pb-16 md:pb-0">
+        <InstallBanner />
+        {children}
+      </div>
     </div>
   );
 }
