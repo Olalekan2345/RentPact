@@ -152,6 +152,10 @@ export default function DisputePanelPage() {
   const settlementWindowOpen = raisedAt !== null && now <= raisedAt + SETTLEMENT_WINDOW_MS;
   const arbitrationWindowElapsed = raisedAt !== null && now > raisedAt + SETTLEMENT_WINDOW_MS + ARBITRATION_WINDOW_MS;
   const remainingFunds = lease.amountPerPeriod * (lease.totalPeriods - lease.periodsReleased);
+  // A caution-fee claim resolves the same way (arbiter picks landlordBps), but the
+  // pot is the disputed caution, not remaining rent — the wording/amounts differ.
+  const isCautionClaim = lease.disputeIsCautionClaim;
+  const disputedAmount = isCautionClaim ? lease.cautionClaimedAmount ?? lease.cautionAmount : remainingFunds;
   const ruling = lastResolution ? rulings.find((r) => r.resolvedAt === lastResolution.resolvedAt) ?? null : null;
 
   // The tenant's most recent repair-credit request, shown to the landlord for
@@ -687,10 +691,18 @@ export default function DisputePanelPage() {
           <Card className="mt-6">
             <CardContent className="pt-6">
               <p className="text-sm font-semibold text-ink">Tier 2 — arbiter ratio resolution</p>
-              <p className="mt-1 text-sm text-ink-muted">
-                For this version, a single trusted arbiter resolves disputes that miss the settlement window.
-                Production should replace this with a panel (multisig or DAO-governed resolver).
-              </p>
+              {isCautionClaim ? (
+                <p className="mt-1 text-sm text-ink-muted">
+                  This is a caution-fee damage claim. Rule how the disputed{" "}
+                  <span className="font-semibold text-ink">{formatUSDC(disputedAmount)} USDC</span> caution is
+                  split between the landlord (damages) and the tenant (refund).
+                </p>
+              ) : (
+                <p className="mt-1 text-sm text-ink-muted">
+                  For this version, a single trusted arbiter resolves disputes that miss the settlement window.
+                  Production should replace this with a panel (multisig or DAO-governed resolver).
+                </p>
+              )}
 
               {settlementWindowOpen ? (
                 <p className="mt-4 text-sm text-ink-soft">
@@ -704,7 +716,8 @@ export default function DisputePanelPage() {
               ) : (
                 <div className="mt-4">
                   <label className="text-sm text-ink-muted">
-                    Landlord share: <span className="font-semibold text-ink">{arbiterPct}%</span>
+                    {isCautionClaim ? "Landlord's share of the caution" : "Landlord share"}:{" "}
+                    <span className="font-semibold text-ink">{arbiterPct}%</span>
                   </label>
                   <input
                     type="range"
@@ -727,7 +740,9 @@ export default function DisputePanelPage() {
                       onClick={() => handleResolve(BPS_DENOMINATOR)}
                       disabled={busy}
                     >
-                      Resolve for landlord — resume schedule
+                      {isCautionClaim
+                        ? `Uphold claim — landlord keeps ${formatUSDC(disputedAmount)} USDC`
+                        : "Resolve for landlord — resume schedule"}
                     </Button>
                     <Button
                       variant="destructive"
@@ -735,7 +750,9 @@ export default function DisputePanelPage() {
                       onClick={() => handleResolve(0)}
                       disabled={busy}
                     >
-                      Resolve for tenant — refund {formatUSDC(remainingFunds)} USDC
+                      {isCautionClaim
+                        ? `Deny claim — refund ${formatUSDC(disputedAmount)} USDC to tenant`
+                        : `Resolve for tenant — refund ${formatUSDC(remainingFunds)} USDC`}
                     </Button>
                   </div>
                   <Button
@@ -744,7 +761,9 @@ export default function DisputePanelPage() {
                     onClick={() => handleResolve(Math.round(arbiterPct * 100))}
                     disabled={busy || arbiterPct === 0 || arbiterPct === 100}
                   >
-                    Or rule a {arbiterPct}% / {100 - arbiterPct}% split
+                    {isCautionClaim
+                      ? `Or split the caution ${arbiterPct}% / ${100 - arbiterPct}%`
+                      : `Or rule a ${arbiterPct}% / ${100 - arbiterPct}% split`}
                   </Button>
                 </div>
               )}
