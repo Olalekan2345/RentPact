@@ -33,9 +33,13 @@ export interface DisputeOverview {
   avgResolutionMs: number | null;
 }
 
+const CAUTION_CLAIM_DISPUTE_REASON = "Caution fee damage claim";
+
 export interface ArbiterDisputeSummary {
   lease: Lease;
-  frozenAmount: number;
+  /** Amount at stake: remaining rent for a rent dispute, the caution fee for a caution claim. */
+  amountAtStake: number;
+  isCautionClaim: boolean;
   tier: DisputeTier;
   raisedAt: number;
   settlementDeadline: number;
@@ -64,9 +68,13 @@ export async function getArbiterActiveDisputes(address: Address): Promise<Arbite
     .filter((l): l is Lease => l !== null && l.disputeActive && l.disputeRaisedAt !== null)
     .map((lease) => {
       const raisedAt = lease.disputeRaisedAt as number;
+      const isCautionClaim = lease.disputeReason === CAUTION_CLAIM_DISPUTE_REASON;
       return {
         lease,
-        frozenAmount: lease.amountPerPeriod * (lease.totalPeriods - lease.periodsReleased),
+        isCautionClaim,
+        amountAtStake: isCautionClaim
+          ? lease.cautionAmount
+          : lease.amountPerPeriod * (lease.totalPeriods - lease.periodsReleased),
         tier: disputeTier(raisedAt, now),
         raisedAt,
         settlementDeadline: raisedAt + SETTLEMENT_WINDOW_MS,

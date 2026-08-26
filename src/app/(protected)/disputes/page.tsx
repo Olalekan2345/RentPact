@@ -115,11 +115,14 @@ function ArbiterDisputeCard({ dispute }: { dispute: ArbiterDisputeSummary }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <h3 className="truncate font-serif text-base text-ink">{lease.propertyAddress}</h3>
-            <Badge variant={badge.variant} className="shrink-0">
-              {badge.label}
-            </Badge>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {dispute.isCautionClaim && <Badge variant="neutral">Caution claim</Badge>}
+              <Badge variant={badge.variant}>{badge.label}</Badge>
+            </div>
           </div>
-          <p className="mt-1 text-sm font-semibold text-gold-600">{formatUSDC(dispute.frozenAmount)} USDC frozen</p>
+          <p className="mt-1 text-sm font-semibold text-gold-600">
+            {formatUSDC(dispute.amountAtStake)} USDC {dispute.isCautionClaim ? "caution at stake" : "frozen"}
+          </p>
           <p className="mt-1 text-xs text-terracotta-500">{countdownLabel(dispute)}</p>
           <p className="mt-1.5 text-xs text-ink-soft">Tenant: {lease.tenantEmail}</p>
           <p className="text-xs text-ink-soft">Landlord: {lease.landlordEmail}</p>
@@ -184,7 +187,7 @@ export default function DisputesPage() {
   if (amArbiter) {
     const awaitingRuling =
       arbiterDisputes?.filter((d) => d.tier === "arbitration" || d.tier === "overdue").length ?? 0;
-    const frozenTotal = arbiterDisputes?.reduce((sum, d) => sum + d.frozenAmount, 0) ?? 0;
+    const frozenTotal = arbiterDisputes?.reduce((sum, d) => sum + d.amountAtStake, 0) ?? 0;
     return (
       <div className="mx-auto max-w-4xl px-4 py-10 sm:px-8">
         <div className="flex items-center gap-2">
