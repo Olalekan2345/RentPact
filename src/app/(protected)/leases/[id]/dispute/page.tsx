@@ -720,11 +720,21 @@ export default function DisputePanelPage() {
                     value={reasoning}
                     onChange={(e) => setReasoning(e.target.value)}
                   />
-                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                    <Button variant="secondary" onClick={() => handleResolve(BPS_DENOMINATOR)} disabled={busy}>
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <Button
+                      variant="secondary"
+                      className="h-auto min-h-11 w-full whitespace-normal py-2 text-center leading-snug"
+                      onClick={() => handleResolve(BPS_DENOMINATOR)}
+                      disabled={busy}
+                    >
                       Resolve for landlord — resume schedule
                     </Button>
-                    <Button variant="destructive" onClick={() => handleResolve(0)} disabled={busy}>
+                    <Button
+                      variant="destructive"
+                      className="h-auto min-h-11 w-full whitespace-normal py-2 text-center leading-snug"
+                      onClick={() => handleResolve(0)}
+                      disabled={busy}
+                    >
                       Resolve for tenant — refund {formatUSDC(remainingFunds)} USDC
                     </Button>
                   </div>
