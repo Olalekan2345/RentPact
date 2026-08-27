@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
@@ -11,10 +11,21 @@ import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 export default function AuthPage() {
   const { session, sessionError } = useAuth();
   const router = useRouter();
+  const [oauthError, setOauthError] = useState<string | null>(null);
 
   useEffect(() => {
     if (session) router.push("/dashboard");
   }, [session, router]);
+
+  // Surface why an OAuth round-trip bounced back here (set by /auth/callback).
+  useEffect(() => {
+    try {
+      const err = new URLSearchParams(window.location.search).get("error");
+      if (err) setOauthError(err);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-cream px-4 py-16">
@@ -35,6 +46,16 @@ export default function AuthPage() {
           <CardContent className="flex flex-col gap-5 pt-6">
             <GoogleSignInButton />
             {sessionError && <p className="text-sm text-terracotta-500">{sessionError}</p>}
+            {oauthError && (
+              <div className="rounded-md border border-terracotta-200 bg-terracotta-50 p-3 text-sm text-terracotta-600">
+                <p className="font-medium">Sign-in didn&apos;t complete</p>
+                <p className="mt-1 text-xs">{oauthError}</p>
+                <p className="mt-2 text-xs text-terracotta-500">
+                  Try again — if it keeps happening, open this page in a private/incognito window, or clear this
+                  site&apos;s cookies, then sign in again.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
