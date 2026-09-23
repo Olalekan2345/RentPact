@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { DashboardIcon, LeasesIcon, BrowseIcon, ListPropertyIcon, MessagesIcon, WalletIcon, ProfileIcon, SettingsIcon, DisputeIcon, HelpIcon } from "@/components/icons/NavIcons";
 import { NotificationBell } from "@/components/NotificationBell";
 import { InstallBanner } from "@/components/InstallBanner";
+import { MobileBottomNav } from "@/components/MobileBottomNav";
 import { LogoMark } from "@/components/Logo";
 
 const NAV_ITEMS = [
@@ -130,27 +131,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      {/* Mobile bottom nav */}
-      <nav className="fixed inset-x-0 bottom-0 z-20 flex border-t border-forest-100/60 bg-cream-100/95 backdrop-blur md:hidden print:hidden">
-        {NAV_ITEMS.map(({ href, label, Icon }) => {
-          const isActive = pathname === href;
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium",
-                isActive ? "text-forest-500" : "text-ink-soft",
-              )}
-            >
-              <Icon className="h-5 w-5" />
-              {label === "Browse listings" ? "Browse" : label === "List a property" ? "List" : label}
-            </Link>
-          );
-        })}
-      </nav>
+      {/* Mobile bottom nav — floating pill + FAB */}
+      <MobileBottomNav />
 
-      <div className="min-w-0 flex-1 pb-16 md:pb-0">
+      <div className="min-w-0 flex-1 pb-24 md:pb-0">
         <InstallBanner />
         {children}
       </div>
