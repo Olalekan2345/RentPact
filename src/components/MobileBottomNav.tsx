@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import {
   DashboardIcon,
@@ -68,15 +69,22 @@ export function MobileBottomNav() {
                 href={href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex flex-1 flex-col items-center gap-1 rounded-2xl py-1 transition-colors",
+                  "relative flex flex-1 flex-col items-center gap-1 rounded-2xl py-1 transition-colors",
                   active ? "text-gold-400" : "text-cream-100/55 hover:text-cream-50",
                 )}
               >
+                {active && (
+                  <motion.span
+                    layoutId="nav-active-pill"
+                    aria-hidden
+                    className="absolute inset-0 rounded-2xl bg-gold-400/15"
+                    transition={{ type: "spring", stiffness: 480, damping: 34, mass: 0.7 }}
+                  />
+                )}
                 <span className="relative flex h-8 w-8 items-center justify-center">
-                  {active && <span aria-hidden className="absolute inset-0 rounded-full bg-gold-400/15" />}
-                  <Icon className="relative h-[20px] w-[20px]" />
+                  <Icon className="h-[20px] w-[20px]" />
                 </span>
-                <span className="text-[10px] font-medium leading-none">{label}</span>
+                <span className="relative text-[10px] font-medium leading-none">{label}</span>
               </Link>
             );
           })}
