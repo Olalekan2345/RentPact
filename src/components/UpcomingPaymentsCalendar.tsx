@@ -6,6 +6,7 @@ import { formatUSDC } from "@/lib/format";
 import { UsdcIcon } from "@/components/icons/UsdcIcon";
 import { INTERVAL_DAYS } from "@/lib/contracts/frequency";
 import { leaseStatus, type Lease } from "@/lib/leaseData";
+import { cn } from "@/lib/utils";
 
 interface ScheduledRelease {
   lease: Lease;
@@ -33,8 +34,9 @@ function scheduledReleasesInMonth(leases: Lease[], monthStart: Date, monthEnd: D
 
 export function UpcomingPaymentsCalendar({ leases }: { leases: Lease[] }) {
   const [monthOffset, setMonthOffset] = useState(0);
+  const [showList, setShowList] = useState(false);
 
-  const { monthLabel, weeks, releasesByDay } = useMemo(() => {
+  const { monthLabel, weeks, releasesByDay, releases } = useMemo(() => {
     const now = new Date();
     const viewDate = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
     const monthStart = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
@@ -58,11 +60,13 @@ export function UpcomingPaymentsCalendar({ leases }: { leases: Lease[] }) {
       monthLabel: monthStart.toLocaleDateString(undefined, { month: "long", year: "numeric" }),
       weeks,
       releasesByDay: byDay,
+      releases,
     };
   }, [leases, monthOffset]);
 
   const today = new Date();
   const isCurrentMonth = monthOffset === 0;
+  const monthTotal = releases.reduce((sum, r) => sum + r.lease.amountPerPeriod, 0);
 
   return (
     <div>
@@ -112,28 +116,58 @@ export function UpcomingPaymentsCalendar({ leases }: { leases: Lease[] }) {
         ))}
       </div>
 
-      <div className="mt-4 flex flex-col gap-2 border-t border-forest-100 pt-3">
-        {releasesByDay.size === 0 ? (
+      <div className="mt-4 border-t border-forest-100 pt-3">
+        {releases.length === 0 ? (
           <p className="text-sm text-ink-soft">No releases scheduled this month.</p>
         ) : (
-          [...releasesByDay.entries()]
-            .sort(([a], [b]) => a - b)
-            .flatMap(([, releases]) => releases)
-            .map((r) => (
-              <Link
-                key={`${r.lease.id}-${r.periodIndex}`}
-                href={`/leases/${r.lease.id}`}
-                className="flex items-center justify-between rounded-md border border-forest-100 px-3 py-2 text-sm hover:border-forest-200"
-              >
-                <span className="text-ink-muted">{r.lease.propertyAddress}</span>
-                <span className="flex items-center gap-1 font-medium text-ink">
+          <>
+            <button
+              type="button"
+              onClick={() => setShowList((v) => !v)}
+              aria-expanded={showList}
+              className="flex w-full items-center justify-between gap-3 rounded-md border border-forest-100 px-3 py-2.5 text-sm transition-colors hover:border-forest-200"
+            >
+              <span className="font-medium text-ink">
+                {releases.length} payment{releases.length === 1 ? "" : "s"} this month
+              </span>
+              <span className="flex items-center gap-2 text-ink-soft">
+                <span className="flex items-center gap-1 text-ink-muted">
                   <UsdcIcon className="h-3.5 w-3.5 shrink-0" />
-                  {formatUSDC(r.lease.amountPerPeriod)} USDC · {r.date.toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                  {formatUSDC(monthTotal)}
                 </span>
-              </Link>
-            ))
+                <ChevronIcon className={cn("h-4 w-4 transition-transform duration-200", showList && "rotate-180")} />
+              </span>
+            </button>
+
+            {showList && (
+              <div className="mt-2 flex max-h-72 flex-col gap-2 overflow-y-auto">
+                {releases.map((r) => (
+                  <Link
+                    key={`${r.lease.id}-${r.periodIndex}`}
+                    href={`/leases/${r.lease.id}`}
+                    className="flex items-center justify-between gap-3 rounded-md border border-forest-100 px-3 py-2 text-sm hover:border-forest-200"
+                  >
+                    <span className="min-w-0 truncate text-ink-muted">{r.lease.propertyAddress}</span>
+                    <span className="flex shrink-0 items-center gap-1 font-medium text-ink">
+                      <UsdcIcon className="h-3.5 w-3.5 shrink-0" />
+                      {formatUSDC(r.lease.amountPerPeriod)} USDC ·{" "}
+                      {r.date.toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
+  );
+}
+
+function ChevronIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden>
+      <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
