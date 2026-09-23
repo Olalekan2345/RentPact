@@ -39,7 +39,12 @@ const MORE = [
 export function MobileBottomNav() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  const matches = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  // On a FAB destination (List / Disputes / Profile) the FAB lights up instead
+  // of a core tab — and it keeps Browse (/listings) from lighting on the List
+  // page (/listings/new).
+  const moreActive = MORE.some((m) => matches(m.href));
+  const isCoreActive = (href: string) => !moreActive && matches(href);
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-30 md:hidden print:hidden">
@@ -54,22 +59,24 @@ export function MobileBottomNav() {
 
       <div className="relative z-10 mx-auto flex max-w-md items-end gap-3 px-3 pb-3 pt-2">
         {/* Floating pill of core tabs */}
-        <nav className="flex flex-1 items-center justify-around rounded-full border border-cream-50/10 bg-forest-600/95 px-1.5 py-1.5 shadow-lifted backdrop-blur-md">
+        <nav className="flex flex-1 items-stretch justify-around rounded-3xl border border-cream-50/10 bg-forest-600/95 px-1 py-1.5 shadow-lifted backdrop-blur-md">
           {CORE.map(({ href, label, Icon }) => {
-            const active = isActive(href);
+            const active = isCoreActive(href);
             return (
               <Link
                 key={href}
                 href={href}
-                aria-label={label}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "relative flex h-11 w-11 items-center justify-center rounded-full transition-colors",
-                  active ? "text-gold-400" : "text-cream-100/60 hover:text-cream-50",
+                  "flex flex-1 flex-col items-center gap-1 rounded-2xl py-1 transition-colors",
+                  active ? "text-gold-400" : "text-cream-100/55 hover:text-cream-50",
                 )}
               >
-                {active && <span aria-hidden className="absolute inset-0 rounded-full bg-gold-400/15" />}
-                <Icon className="relative h-[22px] w-[22px]" />
+                <span className="relative flex h-8 w-8 items-center justify-center">
+                  {active && <span aria-hidden className="absolute inset-0 rounded-full bg-gold-400/15" />}
+                  <Icon className="relative h-[20px] w-[20px]" />
+                </span>
+                <span className="text-[10px] font-medium leading-none">{label}</span>
               </Link>
             );
           })}
@@ -94,12 +101,18 @@ export function MobileBottomNav() {
               ))}
             </div>
           )}
+          {moreActive && (
+            <span aria-hidden className="pointer-events-none absolute -inset-1.5 rounded-full bg-gold-400/40 blur-md" />
+          )}
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
             aria-label={open ? "Close quick actions" : "Open quick actions"}
             aria-expanded={open}
-            className="flex h-14 w-14 items-center justify-center rounded-full bg-gold-400 text-forest-700 shadow-gold transition-transform active:scale-95"
+            className={cn(
+              "relative flex h-14 w-14 items-center justify-center rounded-full bg-gold-400 text-forest-700 shadow-gold transition-transform active:scale-95",
+              moreActive && "ring-2 ring-gold-200 ring-offset-2 ring-offset-cream",
+            )}
           >
             <PlusIcon className={cn("h-6 w-6 transition-transform duration-200", open && "rotate-45")} />
           </button>
