@@ -4,13 +4,11 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
-import { Badge, Button, Card, CardContent, Skeleton } from "@/components/ui";
+import { Button, Card, CardContent, Skeleton } from "@/components/ui";
 import { formatDate } from "@/lib/format";
-import { FREQUENCY_OPTIONS } from "@/lib/contracts/frequency";
 import {
   listLeasesForTenant,
   listLeasesForLandlord,
-  leaseStatus,
   getReputationStats,
   getCautionReturnRate,
   getTenancyCredentials,
@@ -24,6 +22,7 @@ import { fetchListingsForLandlord, type Listing } from "@/lib/listings";
 import { fetchProfile, type UserProfile } from "@/lib/profile";
 import { fetchReviewsFor, type Review } from "@/lib/reviews";
 import { ReviewsSection } from "@/components/reviews";
+import { RentalHistory } from "@/components/RentalHistory";
 
 export default function ProfilePage() {
   const { session, isLoading } = useAuth();
@@ -58,8 +57,6 @@ export default function ProfilePage() {
 
   if (isLoading || !session) return null;
 
-  const completedTenantLeases = (tenantLeases ?? []).filter((l) => leaseStatus(l) === "completed");
-  const completedLandlordLeases = (landlordLeases ?? []).filter((l) => leaseStatus(l) === "completed");
   const score = reputation
     ? (reputation.completedAsTenant + reputation.completedAsLandlord) * 10 +
       reputation.disputesWonAsTenant * 3 -
@@ -152,25 +149,7 @@ export default function ProfilePage() {
         </Card>
 
         {/* Rental history */}
-        <Card className="mt-6">
-          <CardContent className="pt-6">
-            <p className="text-sm font-semibold text-ink">Rental history</p>
-            {tenantLeases === null || landlordLeases === null ? (
-              <Skeleton className="mt-3 h-16 w-full" />
-            ) : completedTenantLeases.length === 0 && completedLandlordLeases.length === 0 ? (
-              <p className="mt-2 text-sm text-ink-soft">No completed leases yet.</p>
-            ) : (
-              <div className="mt-3 flex flex-col gap-2">
-                {completedTenantLeases.map((l) => (
-                  <HistoryRow key={l.id} lease={l} role="Tenant" />
-                ))}
-                {completedLandlordLeases.map((l) => (
-                  <HistoryRow key={l.id} lease={l} role="Landlord" />
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <RentalHistory tenantLeases={tenantLeases} landlordLeases={landlordLeases} />
 
         {/* Reviews */}
         <ReviewsSection
@@ -221,21 +200,6 @@ function Stat({ label, value }: { label: string; value: number }) {
     <div>
       <p className="text-xs text-ink-soft">{label}</p>
       <p className="mt-0.5 font-semibold text-ink">{value}</p>
-    </div>
-  );
-}
-
-function HistoryRow({ lease, role }: { lease: Lease; role: "Tenant" | "Landlord" }) {
-  const frequencyLabel = FREQUENCY_OPTIONS.find((f) => f.value === lease.frequency)?.label ?? lease.frequency;
-  return (
-    <div className="flex items-center justify-between rounded-md border border-forest-100 p-3 text-sm">
-      <div>
-        <p className="font-medium capitalize text-ink">{lease.propertyType}</p>
-        <p className="text-xs text-ink-soft">
-          {frequencyLabel} · {lease.totalPeriods} periods · as {role}
-        </p>
-      </div>
-      <Badge variant="gold">Completed</Badge>
     </div>
   );
 }

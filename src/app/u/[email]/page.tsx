@@ -4,9 +4,8 @@ import { useEffect, useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/AppShell";
-import { Badge, Card, CardContent, Skeleton } from "@/components/ui";
+import { Card, CardContent, Skeleton } from "@/components/ui";
 import { formatDate } from "@/lib/format";
-import { FREQUENCY_OPTIONS } from "@/lib/contracts/frequency";
 import { MOCK_MODE } from "@/lib/circle";
 import type { Address } from "viem";
 import {
@@ -15,7 +14,6 @@ import {
   getTenancyCredentials,
   listLeasesForTenant,
   listLeasesForLandlord,
-  leaseStatus,
   type Lease,
   type ReputationStats,
   type CautionReturnRate,
@@ -27,6 +25,7 @@ import { fetchReviewsFor, type Review } from "@/lib/reviews";
 import { fetchPrivacyPrefs, type PrivacyPrefs } from "@/lib/privacy";
 import { TenancyCredentialCard } from "@/components/TenancyCredentialCard";
 import { ReviewsSection } from "@/components/reviews";
+import { RentalHistory } from "@/components/RentalHistory";
 
 export default function PublicProfilePage() {
   const { email: rawEmail } = useParams<{ email: string }>();
@@ -78,8 +77,6 @@ export default function PublicProfilePage() {
   }
 
   const canScanChain = MOCK_MODE || !!address;
-  const completedTenant = (tenantLeases ?? []).filter((l) => leaseStatus(l) === "completed");
-  const completedLandlord = (landlordLeases ?? []).filter((l) => leaseStatus(l) === "completed");
   const score = reputation
     ? (reputation.completedAsTenant + reputation.completedAsLandlord) * 10 +
       reputation.disputesWonAsTenant * 3 -
@@ -154,27 +151,7 @@ export default function PublicProfilePage() {
         )}
 
         {prefs?.showRentalHistory !== false && (
-          <Card className="mt-6">
-            <CardContent className="pt-6">
-              <p className="text-sm font-semibold text-ink">Rental history</p>
-              {!canScanChain ? (
-                <p className="mt-2 text-sm text-ink-soft">Not available from this view.</p>
-              ) : tenantLeases === null || landlordLeases === null ? (
-                <Skeleton className="mt-3 h-16 w-full" />
-              ) : completedTenant.length === 0 && completedLandlord.length === 0 ? (
-                <p className="mt-2 text-sm text-ink-soft">No completed leases yet.</p>
-              ) : (
-                <div className="mt-3 flex flex-col gap-2">
-                  {completedTenant.map((l) => (
-                    <HistoryRow key={l.id} lease={l} role="Tenant" />
-                  ))}
-                  {completedLandlord.map((l) => (
-                    <HistoryRow key={l.id} lease={l} role="Landlord" />
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <RentalHistory tenantLeases={tenantLeases} landlordLeases={landlordLeases} unavailable={!canScanChain} />
         )}
 
         {prefs?.showReviews !== false && (
@@ -193,21 +170,6 @@ function Stat({ label, value }: { label: string; value: number }) {
     <div>
       <p className="text-xs text-ink-soft">{label}</p>
       <p className="mt-0.5 font-semibold text-ink">{value}</p>
-    </div>
-  );
-}
-
-function HistoryRow({ lease, role }: { lease: Lease; role: "Tenant" | "Landlord" }) {
-  const frequencyLabel = FREQUENCY_OPTIONS.find((f) => f.value === lease.frequency)?.label ?? lease.frequency;
-  return (
-    <div className="flex items-center justify-between rounded-md border border-forest-100 p-3 text-sm">
-      <div>
-        <p className="font-medium capitalize text-ink">{lease.propertyType}</p>
-        <p className="text-xs text-ink-soft">
-          {frequencyLabel} · {lease.totalPeriods} periods · as {role}
-        </p>
-      </div>
-      <Badge variant="gold">Completed</Badge>
     </div>
   );
 }
