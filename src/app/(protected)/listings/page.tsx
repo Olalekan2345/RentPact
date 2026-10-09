@@ -11,11 +11,14 @@ import { UsdcIcon } from "@/components/icons/UsdcIcon";
 import { formatUSDC } from "@/lib/format";
 import { FREQUENCY_OPTIONS } from "@/lib/contracts/frequency";
 import { fetchActiveListings, type Listing } from "@/lib/listings";
+import { fetchReviewSummaries, type ReviewSummary, type RoleSummary } from "@/lib/reviews";
+import { RatingBadge, roleSummaryOf } from "@/components/reviews";
 
 export default function BrowseListingsPage() {
   const { session, isLoading } = useAuth();
   const router = useRouter();
   const [listings, setListings] = useState<Listing[] | null>(null);
+  const [landlordSummaries, setLandlordSummaries] = useState<Record<string, ReviewSummary> | undefined>(undefined);
 
   useEffect(() => {
     if (!isLoading && !session) router.push("/auth");
@@ -23,7 +26,11 @@ export default function BrowseListingsPage() {
 
   useEffect(() => {
     if (!session) return;
-    fetchActiveListings().then(setListings);
+    fetchActiveListings().then((loaded) => {
+      setListings(loaded);
+      // One batched request for every landlord on the page, not one per card.
+      fetchReviewSummaries(loaded.map((l) => l.landlordEmail)).then(setLandlordSummaries);
+    });
   }, [session]);
 
   if (isLoading || !session) return null;
@@ -50,7 +57,11 @@ export default function BrowseListingsPage() {
           ) : (
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {listings.map((listing) => (
-                <ListingCard key={listing.id} listing={listing} />
+                <ListingCard
+                  key={listing.id}
+                  listing={listing}
+                  landlordRating={roleSummaryOf(landlordSummaries, listing.landlordEmail, "landlord")}
+                />
               ))}
             </div>
           )}
@@ -59,7 +70,13 @@ export default function BrowseListingsPage() {
   );
 }
 
-function ListingCard({ listing }: { listing: Listing }) {
+function ListingCard({
+  listing,
+  landlordRating,
+}: {
+  listing: Listing;
+  landlordRating: RoleSummary | null | undefined;
+}) {
   const frequencyLabel =
     FREQUENCY_OPTIONS.find((f) => f.value === listing.frequency)?.label ?? listing.frequency;
   const totalEscrow = listing.amountPerPeriod * listing.totalPeriods + (listing.securityDeposit ?? 0);
@@ -83,6 +100,10 @@ function ListingCard({ listing }: { listing: Listing }) {
             {listing.propertyType}
           </Badge>
         </div>
+        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-ink-soft">
+          Landlord
+          <RatingBadge summary={landlordRating} emptyLabel="New · no reviews yet" />
+        </p>
         <div className="mt-4 flex items-center justify-between text-sm">
           <span className="flex items-center gap-1 font-semibold text-ink">
             <UsdcIcon className="h-3.5 w-3.5 shrink-0" />

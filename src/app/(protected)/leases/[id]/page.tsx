@@ -20,7 +20,8 @@ import { formatDate, formatDateTime } from "@/lib/format";
 import { UsdcAmount } from "@/components/UsdcAmount";
 import { UsdcIcon } from "@/components/icons/UsdcIcon";
 import { nodesForLease } from "@/lib/leaseTimeline";
-import { fetchReviewsFor, submitReview } from "@/lib/reviews";
+import { fetchReviewSummaries, type ReviewSummary } from "@/lib/reviews";
+import { LeaseReviewCard, RatingBadge, roleSummaryOf } from "@/components/reviews";
 import { fetchListingIdForLease, fetchListing, type Listing } from "@/lib/listings";
 import { FREQUENCY_OPTIONS, INTERVAL_DAYS } from "@/lib/contracts/frequency";
 import { MOCK_MODE } from "@/lib/circle";
@@ -77,11 +78,7 @@ export default function LeaseDetailPage() {
   const [disputeModalOpen, setDisputeModalOpen] = useState(false);
   const [releasing, setReleasing] = useState(false);
   const [releaseError, setReleaseError] = useState<string | null>(null);
-  const [alreadyReviewed, setAlreadyReviewed] = useState<boolean | null>(null);
-  const [reviewRating, setReviewRating] = useState(5);
-  const [reviewComment, setReviewComment] = useState("");
-  const [submittingReview, setSubmittingReview] = useState(false);
-  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [partySummaries, setPartySummaries] = useState<Record<string, ReviewSummary> | undefined>(undefined);
   const [onChainActivity, setOnChainActivity] = useState<ActivityItem[] | null>(null);
   const [showProof, setShowProof] = useState(false);
   const [moveOut, setMoveOut] = useState<MoveOutCondition | null | undefined>(undefined);
@@ -108,13 +105,12 @@ export default function LeaseDetailPage() {
     refresh();
   }, [refresh]);
 
+  const tenantEmail = lease?.tenantEmail;
+  const landlordEmail = lease?.landlordEmail;
   useEffect(() => {
-    if (!session || !lease) return;
-    const counterpartyEmail = lease.tenantEmail === session.email ? lease.landlordEmail : lease.tenantEmail;
-    fetchReviewsFor(counterpartyEmail).then((reviews) => {
-      setAlreadyReviewed(reviews.some((r) => r.leaseId === lease.id && r.fromEmail === session.email));
-    });
-  }, [session, lease]);
+    if (!tenantEmail || !landlordEmail) return;
+    fetchReviewSummaries([tenantEmail, landlordEmail]).then(setPartySummaries);
+  }, [tenantEmail, landlordEmail]);
 
   useEffect(() => {
     if (!lease) return;
@@ -237,20 +233,6 @@ export default function LeaseDetailPage() {
     await raiseDispute(lease.id, reason, session.address);
     setDisputeModalOpen(false);
     refresh();
-  };
-
-  const handleSubmitReview = async () => {
-    setReviewError(null);
-    setSubmittingReview(true);
-    try {
-      const toEmail = lease.tenantEmail === session.email ? lease.landlordEmail : lease.tenantEmail;
-      await submitReview({ leaseId: lease.id, fromEmail: session.email, toEmail, rating: reviewRating, comment: reviewComment });
-      setAlreadyReviewed(true);
-    } catch (err) {
-      setReviewError(err instanceof Error ? err.message : "Could not submit review.");
-    } finally {
-      setSubmittingReview(false);
-    }
   };
 
   const handleMoveOutPhotoAdd = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -484,22 +466,18 @@ export default function LeaseDetailPage() {
           <CardContent className="pt-6">
             <h2 className="text-lg font-semibold text-ink">Parties</h2>
             <div className="mt-4 flex flex-col gap-3">
-              <div className="flex items-center justify-between rounded-md border border-forest-100 p-3 text-sm">
-                <div>
-                  <p className="font-medium text-ink">{lease.tenantEmail}</p>
-                  <p className="text-xs text-ink-soft">Tenant</p>
-                </div>
-                <span className="text-xs text-ink-soft">Deposited {formatDate(new Date(lease.createdAt))}</span>
-              </div>
-              <div className="flex items-center justify-between rounded-md border border-forest-100 p-3 text-sm">
-                <div>
-                  <p className="font-medium text-ink">{lease.landlordEmail}</p>
-                  <p className="text-xs text-ink-soft">Landlord</p>
-                </div>
-                <span className="text-xs text-ink-soft">
-                  {lease.signedAt ? `Signed ${formatDate(new Date(lease.signedAt))}` : "Awaiting signature"}
-                </span>
-              </div>
+              <PartyRow
+                email={lease.tenantEmail}
+                role="Tenant"
+                summary={roleSummaryOf(partySummaries, lease.tenantEmail, "tenant")}
+                meta={`Deposited ${formatDate(new Date(lease.createdAt))}`}
+              />
+              <PartyRow
+                email={lease.landlordEmail}
+                role="Landlord"
+                summary={roleSummaryOf(partySummaries, lease.landlordEmail, "landlord")}
+                meta={lease.signedAt ? `Signed ${formatDate(new Date(lease.signedAt))}` : "Awaiting signature"}
+              />
             </div>
           </CardContent>
         </Card>
@@ -667,51 +645,21 @@ export default function LeaseDetailPage() {
                 </div>
               ) : (
                 <p className="mt-2 text-sm text-ink-soft">
-                  This unlocks once the lease is fully completed, same as reviews.
+                  This unlocks once the lease is fully completed.
                 </p>
               )}
             </CardContent>
           </Card>
         )}
 
-        {status === "completed" && viewerRole !== "guest" && alreadyReviewed !== null && (
-          <Card className="mt-6">
-            <CardContent className="pt-6">
-              <h2 className="text-lg font-semibold text-ink">
-                {alreadyReviewed ? "Review submitted" : `Review your ${viewerRole === "tenant" ? "landlord" : "tenant"}`}
-              </h2>
-              {alreadyReviewed ? (
-                <p className="mt-2 text-sm text-ink-muted">Thanks — your review is visible on their profile.</p>
-              ) : (
-                <div className="mt-4 flex flex-col gap-3">
-                  <div className="flex gap-1">
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <button
-                        key={n}
-                        type="button"
-                        onClick={() => setReviewRating(n)}
-                        className={`text-2xl leading-none ${n <= reviewRating ? "text-gold-600" : "text-forest-100"}`}
-                        aria-label={`${n} star${n > 1 ? "s" : ""}`}
-                      >
-                        ★
-                      </button>
-                    ))}
-                  </div>
-                  <textarea
-                    placeholder="How was the experience? (optional)"
-                    value={reviewComment}
-                    onChange={(e) => setReviewComment(e.target.value)}
-                    rows={3}
-                    className="rounded-md border border-forest-100 bg-cream-50 px-4 py-2.5 text-[15px] text-ink focus:border-forest-400 focus:outline-none focus:ring-2 focus:ring-forest-100"
-                  />
-                  {reviewError && <p className="text-sm text-terracotta-500">{reviewError}</p>}
-                  <Button onClick={handleSubmitReview} disabled={submittingReview} className="self-start">
-                    {submittingReview ? "Submitting…" : "Submit review"}
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        {/* Two-way review — unlocks at the first rent release; shown as a locked hint before that on a live lease. */}
+        {viewerRole !== "guest" && (lease.periodsReleased >= 1 || status === "active" || status === "disputed") && (
+          <LeaseReviewCard
+            leaseId={lease.id}
+            viewerRole={viewerRole}
+            counterpartyEmail={viewerRole === "tenant" ? lease.landlordEmail : lease.tenantEmail}
+            unlocked={lease.periodsReleased >= 1}
+          />
         )}
       </div>
 
@@ -837,6 +785,36 @@ function CautionFeeCard({
         {error && <p className="mt-3 text-sm text-terracotta-500">{error}</p>}
       </CardContent>
     </Card>
+  );
+}
+
+function PartyRow({
+  email,
+  role,
+  summary,
+  meta,
+}: {
+  email: string;
+  role: "Tenant" | "Landlord";
+  summary: ReturnType<typeof roleSummaryOf>;
+  meta: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md border border-forest-100 p-3 text-sm">
+      <div className="min-w-0">
+        <Link
+          href={`/u/${encodeURIComponent(email)}`}
+          className="block truncate font-medium text-ink hover:text-forest-500 hover:underline"
+        >
+          {email}
+        </Link>
+        <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-ink-soft">
+          {role}
+          <RatingBadge summary={summary} emptyLabel={null} />
+        </p>
+      </div>
+      <span className="shrink-0 text-right text-xs text-ink-soft">{meta}</span>
+    </div>
   );
 }
 

@@ -153,12 +153,17 @@ function threadsToNotifications(threads: Thread[], viewerEmail: string): Notific
   return notifications;
 }
 
+/**
+ * Only published reviews reach here (the API withholds double-blind ones), and
+ * the timestamp is the reveal moment — a sealed review surfaces as new when it
+ * goes public, not back-dated to when it was written.
+ */
 function reviewsToNotifications(reviews: Review[]): Notification[] {
   return reviews.map((r) => ({
     id: `review:${r.id}`,
     category: "messages",
-    title: `${r.fromEmail} left you a ${r.rating}-star review`,
-    timestamp: r.createdAt,
+    title: `${r.fromName?.trim() || r.fromEmail} left you a ${r.rating}-star review`,
+    timestamp: r.publishedAt ?? r.createdAt,
     read: false,
     href: "/profile",
     urgent: false,

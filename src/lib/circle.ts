@@ -1,6 +1,7 @@
 import { keccak256, toHex, formatUnits, type Address } from "viem";
 import { envResult } from "@/lib/env";
 import { executeCircleChallenge } from "@/lib/circleSdk";
+import { circleUserIdFromEmail } from "@/lib/circleUserId";
 import { publicClient, usdcAddress } from "@/lib/contracts/rentPactEscrow";
 import { encodeTransfer, toBaseUnits } from "@/lib/contracts/onChainLease";
 import { invalidateChainCache, cachedChainRead } from "@/lib/chainCache";
@@ -75,11 +76,6 @@ function requireAppId(): string {
   const appId = process.env.NEXT_PUBLIC_CIRCLE_APP_ID;
   if (!appId) throw new Error("NEXT_PUBLIC_CIRCLE_APP_ID is not set — see SETUP.md.");
   return appId;
-}
-
-/** Stable Circle userId derived from email — Circle userIds must avoid "@"/".". */
-function circleUserIdFromEmail(email: string): string {
-  return `rp_${keccak256(toHex(email.trim().toLowerCase())).slice(2, 34)}`;
 }
 
 async function ensureUserTokenForEmail(email: string): Promise<{ userId: string; userToken: string; encryptionKey: string }> {

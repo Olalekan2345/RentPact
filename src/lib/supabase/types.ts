@@ -77,6 +77,8 @@ type ReviewsRow = {
   lease_id: string;
   from_email: string;
   to_email: string;
+  /** "tenant" | "landlord" — which side of the lease the reviewee was on (migration 0012). */
+  to_role: string | null;
   rating: number;
   comment: string;
   created_at: number;

@@ -11,6 +11,8 @@ import { fetchListing, type Listing } from "@/lib/listings";
 import { fetchListingThread, sendListingInquiry, sendMediaMessage, markThreadRead, type Message } from "@/lib/messages";
 import { useAttachments, AttachButton, VoiceRecorderButton, AttachmentPreviews, MessageAttachments } from "@/components/message/attachments";
 import { MessageTicks } from "@/components/message/MessageTicks";
+import { fetchReviewSummaries, type ReviewSummary } from "@/lib/reviews";
+import { RatingBadge, roleSummaryOf } from "@/components/reviews";
 
 export default function ListingInquiryPage() {
   const { listingId } = useParams<{ listingId: string }>();
@@ -38,6 +40,14 @@ export default function ListingInquiryPage() {
         ? searchParams.get("with")
         : listing.landlordEmail
       : null;
+
+  // The landlord sees the inquiring tenant's rating as a tenant; the tenant sees the landlord's as a landlord.
+  const counterpartyRole = session && listing && session.email === listing.landlordEmail ? "tenant" : "landlord";
+  const [counterpartySummaries, setCounterpartySummaries] = useState<Record<string, ReviewSummary> | undefined>(undefined);
+  useEffect(() => {
+    if (!counterpartyEmail) return;
+    fetchReviewSummaries([counterpartyEmail]).then(setCounterpartySummaries);
+  }, [counterpartyEmail]);
 
   const refresh = useCallback(async () => {
     if (!session || !counterpartyEmail) return;
@@ -113,7 +123,20 @@ export default function ListingInquiryPage() {
           />
           <div className="min-w-0 flex-1">
             <p className="truncate font-medium text-ink">{listing.propertyAddress}</p>
-            <p className="truncate text-sm text-ink-soft">{counterpartyEmail} · Inquiry, no lease yet</p>
+            <p className="flex min-w-0 items-center gap-1.5 text-sm text-ink-soft">
+              <Link
+                href={`/u/${encodeURIComponent(counterpartyEmail)}`}
+                className="truncate hover:text-forest-500 hover:underline"
+              >
+                {counterpartyEmail}
+              </Link>
+              <RatingBadge
+                summary={roleSummaryOf(counterpartySummaries, counterpartyEmail, counterpartyRole)}
+                emptyLabel={null}
+                className="shrink-0"
+              />
+            </p>
+            <p className="truncate text-xs text-ink-soft">Inquiry, no lease yet</p>
           </div>
           <Link href={`/listings/${listing.id}`} className="shrink-0 text-sm font-medium text-forest-500 underline">
             View listing

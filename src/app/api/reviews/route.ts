@@ -1,42 +1,55 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listReviewsForEmail, hasReviewed, createReview } from "@/lib/reviewServer";
-import { readLease } from "@/lib/contracts/onChainLease";
-import { envResult } from "@/lib/env";
+import { listPublishedReviewsForEmail, hasReviewed, createReview, getLeaseReviewState } from "@/lib/reviewServer";
+import { checkReviewEligibility, requireSessionEmail, ReviewAccessError } from "@/lib/reviewEligibilityServer";
+import { REVIEW_COMMENT_MAX } from "@/lib/reviewModel";
 
+/** Published reviews about a user — hidden (double-blind) reviews are never returned. */
 export async function GET(req: NextRequest) {
   const forEmail = req.nextUrl.searchParams.get("forEmail");
   if (!forEmail) return NextResponse.json({ error: "forEmail query param is required" }, { status: 400 });
-  const reviews = await listReviewsForEmail(forEmail);
+  const reviews = await listPublishedReviewsForEmail(forEmail);
   return NextResponse.json({ reviews });
 }
 
+/**
+ * Leave a review of the other party of a lease. The reviewer is the signed-in
+ * user and the reviewee is derived from the lease — any from/to emails in the
+ * body are ignored (outside mock mode), so nobody can review as someone else.
+ */
 export async function POST(req: NextRequest) {
   try {
-    const { leaseId, fromEmail, toEmail, rating, comment } = await req.json();
+    const email = await requireSessionEmail();
+    const body = await req.json().catch(() => ({}));
+    const { leaseId, rating, comment, toEmail, toRole } = body as Record<string, unknown>;
 
-    if (!leaseId || !fromEmail || !toEmail || !rating) {
-      return NextResponse.json({ error: "leaseId, fromEmail, toEmail, rating are required" }, { status: 400 });
+    if (typeof leaseId !== "string" || !leaseId) {
+      return NextResponse.json({ error: "leaseId is required" }, { status: 400 });
     }
-    if (rating < 1 || rating > 5) {
-      return NextResponse.json({ error: "rating must be between 1 and 5" }, { status: 400 });
+    if (typeof rating !== "number" || !Number.isInteger(rating) || rating < 1 || rating > 5) {
+      return NextResponse.json({ error: "Choose a rating from 1 to 5 stars." }, { status: 400 });
     }
-    if (await hasReviewed(leaseId, fromEmail)) {
+    const text = typeof comment === "string" ? comment.trim() : "";
+    if (text.length > REVIEW_COMMENT_MAX) {
+      return NextResponse.json({ error: `Keep your review under ${REVIEW_COMMENT_MAX} characters.` }, { status: 400 });
+    }
+
+    const { revieweeEmail, revieweeRole } = await checkReviewEligibility(leaseId, email, { toEmail, toRole });
+
+    if (await hasReviewed(leaseId, email)) {
       return NextResponse.json({ error: "You've already reviewed this lease." }, { status: 409 });
     }
 
-    // Real mode: verify the lease is genuinely completed on-chain before
-    // accepting a review — reviews only unlock after the lease is done.
-    const mockMode = envResult.success ? envResult.env.NEXT_PUBLIC_MOCK_MODE : true;
-    if (!mockMode) {
-      const lease = await readLease(BigInt(leaseId));
-      if (lease.cancelled || lease.periodsReleased < lease.totalPeriods) {
-        return NextResponse.json({ error: "This lease isn't completed yet." }, { status: 403 });
-      }
-    }
-
-    const review = await createReview({ leaseId, fromEmail, toEmail, rating, comment: comment ?? "" });
-    return NextResponse.json({ review });
+    await createReview({ leaseId, fromEmail: email, toEmail: revieweeEmail, toRole: revieweeRole, rating, comment: text });
+    return NextResponse.json({ state: await getLeaseReviewState(leaseId, email) });
   } catch (error) {
-    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+    if (error instanceof ReviewAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    // A concurrent duplicate submit trips the (lease_id, from_email) unique index.
+    if ((error as { code?: string }).code === "23505") {
+      return NextResponse.json({ error: "You've already reviewed this lease." }, { status: 409 });
+    }
+    console.error("[reviews] create failed", error);
+    return NextResponse.json({ error: "Could not submit your review. Please try again." }, { status: 500 });
   }
 }

@@ -26,6 +26,7 @@ import { fetchProfile, type UserProfile } from "@/lib/profile";
 import { fetchReviewsFor, type Review } from "@/lib/reviews";
 import { fetchPrivacyPrefs, type PrivacyPrefs } from "@/lib/privacy";
 import { TenancyCredentialCard } from "@/components/TenancyCredentialCard";
+import { ReviewsSection } from "@/components/reviews";
 
 export default function PublicProfilePage() {
   const { email: rawEmail } = useParams<{ email: string }>();
@@ -84,7 +85,6 @@ export default function PublicProfilePage() {
       reputation.disputesWonAsTenant * 3 -
       reputation.disputesLostAsTenant * 5
     : null;
-  const avgRating = reviews && reviews.length > 0 ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : null;
 
   return (
     <AppShell>
@@ -178,35 +178,10 @@ export default function PublicProfilePage() {
         )}
 
         {prefs?.showReviews !== false && (
-          <Card className="mt-6">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-ink">Reviews</p>
-                {avgRating !== null && (
-                  <span className="text-sm font-medium text-gold-600">
-                    {avgRating.toFixed(1)} ★ ({reviews!.length})
-                  </span>
-                )}
-              </div>
-              {reviews === null ? (
-                <Skeleton className="mt-3 h-16 w-full" />
-              ) : reviews.length === 0 ? (
-                <p className="mt-2 text-sm text-ink-soft">No reviews yet.</p>
-              ) : (
-                <div className="mt-3 flex flex-col gap-3">
-                  {reviews.map((r) => (
-                    <div key={r.id} className="rounded-md border border-forest-100 p-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-ink">{r.fromEmail}</span>
-                        <span className="text-sm text-gold-600">{"★".repeat(r.rating)}</span>
-                      </div>
-                      {r.comment && <p className="mt-1 text-sm text-ink-muted">{r.comment}</p>}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <ReviewsSection
+            reviews={reviews}
+            emptyText="No reviews yet. Reviews come only from the other party of a real RentPact lease."
+          />
         )}
       </div>
     </AppShell>

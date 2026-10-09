@@ -23,6 +23,7 @@ import { useCautionFeeLabel } from "@/lib/cautionFee";
 import { fetchListingsForLandlord, type Listing } from "@/lib/listings";
 import { fetchProfile, type UserProfile } from "@/lib/profile";
 import { fetchReviewsFor, type Review } from "@/lib/reviews";
+import { ReviewsSection } from "@/components/reviews";
 
 export default function ProfilePage() {
   const { session, isLoading } = useAuth();
@@ -64,8 +65,6 @@ export default function ProfilePage() {
       reputation.disputesWonAsTenant * 3 -
       reputation.disputesLostAsTenant * 5
     : null;
-  const avgRating =
-    reviews && reviews.length > 0 ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length : null;
 
   return (
       <div className="mx-auto max-w-2xl px-4 py-10 sm:px-8">
@@ -174,37 +173,10 @@ export default function ProfilePage() {
         </Card>
 
         {/* Reviews */}
-        <Card className="mt-6">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-ink">Reviews</p>
-              {avgRating !== null && (
-                <span className="text-sm font-medium text-gold-600">
-                  {avgRating.toFixed(1)} ★ ({reviews!.length})
-                </span>
-              )}
-            </div>
-            {reviews === null ? (
-              <Skeleton className="mt-3 h-16 w-full" />
-            ) : reviews.length === 0 ? (
-              <p className="mt-2 text-sm text-ink-soft">
-                No reviews yet — they unlock for counterparties once a lease completes.
-              </p>
-            ) : (
-              <div className="mt-3 flex flex-col gap-3">
-                {reviews.map((r) => (
-                  <div key={r.id} className="rounded-md border border-forest-100 p-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-ink">{r.fromEmail}</span>
-                      <span className="text-sm text-gold-600">{"★".repeat(r.rating)}</span>
-                    </div>
-                    {r.comment && <p className="mt-1 text-sm text-ink-muted">{r.comment}</p>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <ReviewsSection
+          reviews={reviews}
+          emptyText="No reviews yet — your tenants and landlords can review you once the first rent payment on a lease is released."
+        />
 
         {/* My properties — summary + link to a dedicated page so the profile stays compact */}
         <Card className="mt-6">

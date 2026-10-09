@@ -14,6 +14,8 @@ import { UsdcAmount } from "@/components/UsdcAmount";
 import { FREQUENCY_OPTIONS } from "@/lib/contracts/frequency";
 import { getLease, leaseStatus, signDeadline, signLease, type Lease } from "@/lib/leaseData";
 import { useCautionFeeLabel } from "@/lib/cautionFee";
+import { fetchReviewSummaries, type ReviewSummary } from "@/lib/reviews";
+import { RatingBadge, roleSummaryOf } from "@/components/reviews";
 
 export default function LeaseInvitePage() {
   const { id } = useParams<{ id: string }>();
@@ -26,6 +28,7 @@ export default function LeaseInvitePage() {
   const [signed, setSigned] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
   const [acceptedConstitution, setAcceptedConstitution] = useState(false);
+  const [tenantSummaries, setTenantSummaries] = useState<Record<string, ReviewSummary> | undefined>(undefined);
   const cautionLabel = useCautionFeeLabel();
 
   const refresh = useCallback(() => {
@@ -35,6 +38,13 @@ export default function LeaseInvitePage() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // What other landlords said about this tenant — the landlord's key signal before signing.
+  const tenantEmail = lease?.tenantEmail;
+  useEffect(() => {
+    if (!tenantEmail) return;
+    fetchReviewSummaries([tenantEmail]).then(setTenantSummaries);
+  }, [tenantEmail]);
 
   // The gasless signature round trip (Circle's PIN challenge, then waiting
   // for on-chain confirmation) can run long — this keeps the button from
@@ -121,7 +131,28 @@ export default function LeaseInvitePage() {
             <h1 className="mt-1 font-serif text-2xl text-ink">{lease.propertyAddress}</h1>
 
             <dl className="mt-5 flex flex-col gap-3 border-y border-forest-100 py-5 text-sm">
-              <Row label="Tenant" value={lease.tenantEmail} />
+              <Row
+                label="Tenant"
+                value={
+                  <span className="flex flex-col items-end gap-0.5 text-right">
+                    {session ? (
+                      <Link
+                        href={`/u/${encodeURIComponent(lease.tenantEmail)}`}
+                        className="text-forest-500 underline"
+                      >
+                        {lease.tenantEmail}
+                      </Link>
+                    ) : (
+                      lease.tenantEmail
+                    )}
+                    <RatingBadge
+                      summary={roleSummaryOf(tenantSummaries, lease.tenantEmail, "tenant")}
+                      emptyLabel="New tenant · no reviews yet"
+                      className="font-normal"
+                    />
+                  </span>
+                }
+              />
               <Row label="Rent per period" value={<UsdcAmount amount={lease.amountPerPeriod} />} />
               <Row label="Frequency" value={frequencyLabel} />
               <Row label="Total periods" value={String(lease.totalPeriods)} />

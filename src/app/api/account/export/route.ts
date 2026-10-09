@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProfile } from "@/lib/profileServer";
 import { listListingsForLandlord } from "@/lib/listingServer";
-import { listReviewsForEmail } from "@/lib/reviewServer";
+import { listPublishedReviewsForEmail } from "@/lib/reviewServer";
 import { listAllMessagesForEmail } from "@/lib/messageServer";
 import { getPrefs } from "@/lib/notificationPrefsServer";
 import { getPrivacyPrefs } from "@/lib/privacyServer";
@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const [profile, listings, reviewsReceived, messages, notificationPrefs, privacyPrefs] = await Promise.all([
     getProfile(email),
     listListingsForLandlord(email),
-    listReviewsForEmail(email),
+    listPublishedReviewsForEmail(email),
     listAllMessagesForEmail(email),
     getPrefs(email),
     getPrivacyPrefs(email),

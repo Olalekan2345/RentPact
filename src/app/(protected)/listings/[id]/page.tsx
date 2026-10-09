@@ -13,6 +13,8 @@ import { fetchListing, deactivateListing, type Listing } from "@/lib/listings";
 import type { LeaseDraft } from "@/lib/leaseDraft";
 import { useCautionFeeLabel } from "@/lib/cautionFee";
 import { getCautionReturnRate, type CautionReturnRate } from "@/lib/leaseData";
+import { fetchReviewSummaries, type ReviewSummary } from "@/lib/reviews";
+import { RatingBadge, roleSummaryOf } from "@/components/reviews";
 
 export default function ListingDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -22,6 +24,7 @@ export default function ListingDetailPage() {
   const [listing, setListing] = useState<Listing | null | undefined>(undefined);
   const [deactivating, setDeactivating] = useState(false);
   const [cautionReturnRate, setCautionReturnRate] = useState<CautionReturnRate | null | undefined>(undefined);
+  const [landlordSummaries, setLandlordSummaries] = useState<Record<string, ReviewSummary> | undefined>(undefined);
   const cautionLabel = useCautionFeeLabel();
 
   useEffect(() => {
@@ -36,6 +39,13 @@ export default function ListingDetailPage() {
     if (!listing || !listing.landlordAddress) return;
     getCautionReturnRate({ email: listing.landlordEmail, address: listing.landlordAddress }).then(setCautionReturnRate);
   }, [listing]);
+
+  // What past tenants said about this landlord — the renter's key signal before depositing.
+  const landlordEmail = listing?.landlordEmail;
+  useEffect(() => {
+    if (!landlordEmail) return;
+    fetchReviewSummaries([landlordEmail]).then(setLandlordSummaries);
+  }, [landlordEmail]);
 
   if (isLoading || !session || listing === undefined) {
     return (
@@ -132,15 +142,19 @@ export default function ListingDetailPage() {
                     )}
                   </>
                 )}
-                <div className="flex items-center justify-between">
+                <div className="flex items-start justify-between gap-3">
                   <dt className="text-ink-soft">Landlord</dt>
-                  <dd>
+                  <dd className="flex min-w-0 flex-col items-end gap-0.5 text-right">
                     <Link
                       href={`/u/${encodeURIComponent(listing.landlordEmail)}?address=${listing.landlordAddress}`}
-                      className="font-medium text-forest-500 underline"
+                      className="max-w-full truncate font-medium text-forest-500 underline"
                     >
                       {listing.landlordEmail}
                     </Link>
+                    <RatingBadge
+                      summary={roleSummaryOf(landlordSummaries, listing.landlordEmail, "landlord")}
+                      emptyLabel="New landlord · no reviews yet"
+                    />
                   </dd>
                 </div>
               </dl>
