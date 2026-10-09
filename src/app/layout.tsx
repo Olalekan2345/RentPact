@@ -61,6 +61,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${fraunces.variable} ${dmSans.variable}`}>
+      <head>
+        {/* Warm the connection to Circle's wallet host so the W3S SDK's first
+            request (and its hosted PIN UI) isn't delayed by a cold TLS/DNS
+            handshake — a contributor to the intermittent desktop 155706. */}
+        <link rel="preconnect" href="https://pw-auth.circle.com" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://pw-auth.circle.com" />
+      </head>
       <body className="bg-cream font-sans text-ink antialiased">
         {envResult.success ? (
           <AuthProvider>

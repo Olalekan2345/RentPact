@@ -2,7 +2,8 @@
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Address } from "viem";
-import { getOrCreateWallet } from "@/lib/circle";
+import { getOrCreateWallet, MOCK_MODE } from "@/lib/circle";
+import { preloadCircleSdk } from "@/lib/circleSdk";
 import { supabaseBrowser } from "@/lib/supabase/client";
 
 interface Session {
@@ -76,6 +77,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (provisionedEmailRef.current === email) return;
       provisionedEmailRef.current = email;
       setSessionError(null);
+
+      // Warm the Circle SDK bundle as soon as we know the user — so the first
+      // wallet-creation / transaction challenge isn't slowed by a cold import,
+      // the main cause of the intermittent 155706 "Network error" on desktop.
+      if (!MOCK_MODE) preloadCircleSdk();
 
       // Fast path: show the cached wallet immediately; refresh in background.
       const cached = readWalletCache();
