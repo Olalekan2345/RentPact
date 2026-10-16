@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth-context";
 import Link from "next/link";
 import { PropertyImage } from "@/components/PropertyImage";
 import { Logo } from "@/components/Logo";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
+import { SignInDivider } from "@/components/SignInDivider";
 import { HandshakeIllustration } from "@/components/icons/BrandIllustrations";
 import { Badge, Button, Card, CardContent } from "@/components/ui";
 import { UsdcAmount } from "@/components/UsdcAmount";
@@ -16,6 +18,12 @@ import { getLease, leaseStatus, signDeadline, signLease, type Lease } from "@/li
 import { useCautionFeeLabel } from "@/lib/cautionFee";
 import { fetchReviewSummaries, type ReviewSummary } from "@/lib/reviews";
 import { RatingBadge, roleSummaryOf } from "@/components/reviews";
+
+// Privy's SDK is large: load it only on the sign-in surfaces, and only in the browser.
+const EmailCodeSignIn = dynamic(() => import("@/components/EmailCodeSignIn").then((m) => m.EmailCodeSignIn), {
+  ssr: false,
+});
+const emailSignInEnabled = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID);
 
 export default function LeaseInvitePage() {
   const { id } = useParams<{ id: string }>();
@@ -190,6 +198,12 @@ export default function LeaseInvitePage() {
                 <motion.div key="auth" className="mt-6 flex flex-col gap-3">
                   <p className="text-sm text-ink-muted">Sign in to review and sign this lease.</p>
                   <GoogleSignInButton next={`/leases/${lease.id}/invite`} />
+                  {emailSignInEnabled && (
+                    <>
+                      <SignInDivider />
+                      <EmailCodeSignIn next={`/leases/${lease.id}/invite`} />
+                    </>
+                  )}
                 </motion.div>
               ) : (
                 <motion.div key="sign" className="mt-6 flex flex-col gap-3">

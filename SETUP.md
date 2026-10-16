@@ -36,6 +36,8 @@ config (chain IDs, RPC URLs, public contract addresses).
 | `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project → Settings → API (step 2a) |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase project → Settings → API (step 2a) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase project → Settings → API — **server-only, never commit** |
+| `NEXT_PUBLIC_PRIVY_APP_ID` | Optional | Privy dashboard → App settings (step 2b) — enables email-code sign-in |
+| `PRIVY_APP_SECRET` | With the App ID | Privy dashboard → App settings (step 2b) — **server-only, never commit** |
 | `NEXT_PUBLIC_CIRCLE_APP_ID` | For real Circle mode | Circle console (step 3) |
 | `CIRCLE_API_KEY` | For real Circle mode | Circle console (step 3) — **server-only, never commit** |
 | `CIRCLE_ENTITY_SECRET` | For real Circle mode | Circle console (step 3) — **server-only, never commit** |
@@ -55,10 +57,10 @@ SVG architectural illustration instead of a photo — never a broken image.
 
 Everything server-side — listings, messages, profiles, reviews, templates,
 notification/privacy prefs, lease-constitution/dispute-ruling/move-out
-records — lives in Postgres via Supabase, and sign-in is **Google OAuth
-only** (`src/components/GoogleSignInButton.tsx`) — no passwords, no OTP
-codes, no outbound email dependency of any kind, since Google verifies the
-user's identity itself. Lease lifecycle data itself is *not* here — it's
+records — lives in Postgres via Supabase, and sign-in is **Google OAuth**
+(`src/components/GoogleSignInButton.tsx`), plus optional Privy email codes
+(step 2b) — no passwords and no outbound email dependency of our own, since
+Google or Privy verifies the user's identity. Lease lifecycle data itself is *not* here — it's
 sourced from the deployed `RentPactEscrow` contract (or localStorage in mock
 mode); see `src/lib/leaseData.ts`.
 
@@ -88,6 +90,25 @@ mode); see `src/lib/leaseData.ts`.
    never sends its own auth emails. (An earlier version of this app used
    email OTP / email+password; both were dropped in favor of Google sign-in
    specifically to avoid the SMTP/domain/rate-limit dependency entirely.)
+
+### 2b. Privy (optional email-code sign-in)
+
+Adds "Email me a code" under the Google button, for people who'd rather not
+use Google. Privy sends and checks the 6-digit code, so there's still no
+SMTP setup here; `src/app/api/auth/privy/route.ts` then signs the person into
+the **same Supabase account** Google sign-in uses for that email (data and
+the Circle wallet are keyed by email), so nobody ends up with two accounts.
+
+1. Create a free app at **dashboard.privy.io**.
+2. **Login methods**: enable **Email** only; turn off wallets, socials and
+   SMS. Under embedded wallets, leave automatic wallet creation off —
+   RentPact wallets are Circle wallets.
+3. **App settings → Domains** (allowed origins): add `http://localhost:3000`
+   and your production URL.
+4. **App settings → Basics**: copy the **App ID** into
+   `NEXT_PUBLIC_PRIVY_APP_ID` and the **App secret** into `PRIVY_APP_SECRET`.
+
+Leave both blank and the sign-in page shows Google only.
 
 ## 3. Circle console setup (for real Wallets + Gas Station)
 

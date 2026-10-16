@@ -2,11 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { Card, CardContent } from "@/components/ui";
 import { Logo } from "@/components/Logo";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
+import { SignInDivider } from "@/components/SignInDivider";
+
+// Privy's SDK is large: load it only on the sign-in surfaces, and only in the browser.
+const EmailCodeSignIn = dynamic(() => import("@/components/EmailCodeSignIn").then((m) => m.EmailCodeSignIn), {
+  ssr: false,
+});
+const emailSignInEnabled = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID);
 
 export default function AuthPage() {
   const { session, sessionError } = useAuth();
@@ -39,12 +47,22 @@ export default function AuthPage() {
             <Logo size={36} wordmarkClassName="text-forest-500" />
           </Link>
           <h1 className="mt-5 text-3xl text-ink">Sign in to RentPact</h1>
-          <p className="mt-2 text-ink-muted">Continue with Google to access your account.</p>
+          <p className="mt-2 text-ink-muted">
+            {emailSignInEnabled
+              ? "Continue with Google, or get a sign-in code by email."
+              : "Continue with Google to access your account."}
+          </p>
         </div>
 
         <Card>
           <CardContent className="flex flex-col gap-5 pt-6">
             <GoogleSignInButton />
+            {emailSignInEnabled && (
+              <>
+                <SignInDivider />
+                <EmailCodeSignIn />
+              </>
+            )}
             {sessionError && <p className="text-sm text-terracotta-500">{sessionError}</p>}
             {oauthError && (
               <div className="rounded-md border border-terracotta-200 bg-terracotta-50 p-3 text-sm text-terracotta-600">
