@@ -1,5 +1,5 @@
-import { createPublicClient, http, type Address, type Transport } from "viem";
-import { arcTestnet } from "@/lib/chain";
+import { createPublicClient, fallback, http, type Address, type Transport } from "viem";
+import { arcRpcUrls, arcTestnet } from "@/lib/chain";
 import { rentPactEscrowAbi, erc20Abi } from "@/lib/contracts/rentPactEscrowAbi";
 import { envResult } from "@/lib/env";
 
@@ -66,9 +66,12 @@ function arcFriendly(base: Transport): Transport {
   };
 }
 
+// Every official Arc RPC, in order: if one is down or unreachable, a read moves to the next one instead of
+// failing (one dead hostname once stalled every lease on every page). Each endpoint gets a short timeout
+// and a single retry so a dead host is skipped in seconds, not after viem's default long backoff.
 export const publicClient = createPublicClient({
   chain: arcTestnet,
-  transport: arcFriendly(http()),
+  transport: arcFriendly(fallback(arcRpcUrls.map((url) => http(url, { timeout: 12_000, retryCount: 1 })))),
 });
 
 /** Deployed RentPactEscrow address, or null until Phase 2's deploy step has been run. */

@@ -26,7 +26,7 @@ config (chain IDs, RPC URLs, public contract addresses).
 | Variable | Required | Where it comes from |
 |---|---|---|
 | `NEXT_PUBLIC_ARC_CHAIN_ID` | Yes | `5042002` (Arc testnet) — already filled in `.env.example` |
-| `NEXT_PUBLIC_ARC_RPC_URL` | Yes | `https://rpc.testnet.arc.network` |
+| `NEXT_PUBLIC_ARC_RPC_URL` | Yes | `https://rpc.testnet.arc.io` |
 | `NEXT_PUBLIC_ARC_EXPLORER_URL` | Yes | `https://testnet.arcscan.app` |
 | `NEXT_PUBLIC_USDC_CONTRACT_ADDRESS` | Yes | Native USDC on Arc testnet, pre-filled |
 | `NEXT_PUBLIC_RENTPACT_ESCROW_ADDRESS` | After deploy | Output of the deploy script (step 4) |
