@@ -26,7 +26,7 @@ const DESCRIPTION =
   "USDC rent escrow for tenants and landlords. Rent held in escrow, released on schedule, frozen on dispute — no bank, no lawyer, no trust required.";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://rentpact.xyz"),
+  metadataBase: new URL("https://rentpact.homes"),
   title: TITLE,
   description: DESCRIPTION,
   manifest: "/manifest.webmanifest",
