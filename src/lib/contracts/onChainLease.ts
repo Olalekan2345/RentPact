@@ -410,13 +410,66 @@ function writeScanCache(key: string, cache: ScanCache) {
   }
 }
 
-/** Pages a getContractEvents query across Arc's 10,000-block eth_getLogs cap,
- * resuming from the last scanned block instead of re-walking full history. */
+interface IndexedLog extends StoredLog {
+  eventName: string;
+  blockTimestamp?: number;
+}
+
+// The escrow's whole decoded history from /api/escrow-logs (Arcscan-backed, see escrowLogsServer.ts):
+// a few fast requests instead of ~1,650 sequential getLogs per lookup for a browser with no saved cursor.
+// Concurrent lookups (a lease page asks for nine event types at once) share one fetch.
+const INDEXER_TTL_MS = 5_000;
+let indexerLogs: { at: number; logs: Promise<IndexedLog[]> } | null = null;
+
+function escrowLogsFromIndexer(): Promise<IndexedLog[]> {
+  if (indexerLogs && Date.now() - indexerLogs.at < INDEXER_TTL_MS) return indexerLogs.logs;
+  const logs = fetch("/api/escrow-logs", { cache: "no-store" }).then(async (res) => {
+    if (!res.ok) throw new Error(`escrow-logs ${res.status}`);
+    const body = JSON.parse(await res.text(), bigintReviver) as { logs: IndexedLog[] };
+    // Seed the block-time cache too, so building the feed needs no getBlock per event.
+    for (const log of body.logs) {
+      if (log.blockTimestamp) blockTsMemory.set(log.blockNumber.toString(), log.blockTimestamp);
+    }
+    return body.logs;
+  });
+  indexerLogs = { at: Date.now(), logs };
+  logs.catch(() => {
+    if (indexerLogs?.logs === logs) indexerLogs = null;
+  });
+  return logs;
+}
+
+/** Same semantics as viem's indexed-arg filter: every given arg must match (addresses case-insensitively). */
+function argsMatch(logArgs: Record<string, unknown>, filter: Record<string, unknown> | undefined): boolean {
+  if (!filter) return true;
+  return Object.entries(filter).every(([name, want]) => {
+    if (want === undefined || want === null) return true;
+    const have = String(logArgs[name]).toLowerCase();
+    return (Array.isArray(want) ? want : [want]).some((w) => String(w).toLowerCase() === have);
+  });
+}
+
+/** An event query against the escrow's history, oldest first. Reads the indexer route in the browser;
+ * falls back to paging getContractEvents across Arc's 10,000-block eth_getLogs cap (resuming from the
+ * last scanned block) on the server or if the indexer is unavailable. */
 async function queryEventsChunked<T>(
   eventName: ActivityEventName,
   args: Record<string, unknown> | undefined,
   mapLog: (log: { args: Record<string, unknown>; transactionHash: Hex; blockNumber: bigint }) => T | null,
 ): Promise<T[]> {
+  if (typeof window !== "undefined") {
+    const indexed = await escrowLogsFromIndexer().catch(() => null);
+    if (indexed) {
+      const results: T[] = [];
+      for (const log of indexed) {
+        if (log.eventName !== eventName || !argsMatch(log.args, args)) continue;
+        const mapped = mapLog(log);
+        if (mapped !== null) results.push(mapped);
+      }
+      return results;
+    }
+  }
+
   const address = requireEscrowAddress();
   const latestBlock = await publicClient.getBlockNumber();
 
