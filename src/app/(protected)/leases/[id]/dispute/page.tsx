@@ -30,6 +30,7 @@ import { fetchListingIdForLease, fetchListing, type Listing } from "@/lib/listin
 import { fetchDisputeRulingsForLease, type DisputeRulingRecord } from "@/lib/disputeRuling";
 import { checkTier0 } from "@/lib/tier0";
 import { SETTLEMENT_WINDOW_MS, ARBITRATION_WINDOW_MS, DAY_MS } from "@/lib/constitution";
+import { fetchLandlordBadge } from "@/lib/verification";
 
 const BPS_DENOMINATOR = 10_000;
 
@@ -72,6 +73,8 @@ export default function DisputePanelPage() {
   const [repairRequestAmount, setRepairRequestAmount] = useState("");
   const [repairRequestNote, setRepairRequestNote] = useState("");
   const repairReceipt = useAttachments();
+  // The arbiter also runs landlord verification; if they approved this landlord, they should say so.
+  const [landlordVerifiedSince, setLandlordVerifiedSince] = useState<number | null>(null);
 
   const refresh = useCallback(() => {
     // false: this page no longer needs the historical dispute/caution-claim
@@ -116,6 +119,13 @@ export default function DisputePanelPage() {
       fetchListing(listingId).then(setSourceListing);
     });
   }, [id]);
+
+  const landlordEmail = lease?.landlordEmail;
+  const viewerIsArbiter = isArbiter(session?.address);
+  useEffect(() => {
+    if (!landlordEmail || !viewerIsArbiter) return;
+    fetchLandlordBadge(landlordEmail).then((b) => setLandlordVerifiedSince(b.since));
+  }, [landlordEmail, viewerIsArbiter]);
 
   const role: "tenant" | "landlord" | null = useMemo(() => {
     if (!lease || !session) return null;
@@ -715,6 +725,12 @@ export default function DisputePanelPage() {
                 </p>
               ) : (
                 <div className="mt-4">
+                  {landlordVerifiedSince !== null && (
+                    <p className="mb-4 rounded-md bg-gold-50 px-4 py-3 text-xs text-gold-700">
+                      RentPact&apos;s review team verified this landlord on {formatDate(new Date(landlordVerifiedSince), "long")}.
+                      As the arbiter, say so in your reasoning so both sides know.
+                    </p>
+                  )}
                   <label className="text-sm text-ink-muted">
                     {isCautionClaim ? "Landlord's share of the caution" : "Landlord share"}:{" "}
                     <span className="font-semibold text-ink">{arbiterPct}%</span>

@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deleteTemplate } from "@/lib/templateServer";
+import { errorResponse, requireSelf } from "@/lib/sessionServer";
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
-  const landlordEmail = req.nextUrl.searchParams.get("landlordEmail");
-  if (!landlordEmail) return NextResponse.json({ error: "landlordEmail query param is required" }, { status: 400 });
-  await deleteTemplate(params.id, landlordEmail);
-  return NextResponse.json({ ok: true });
+  try {
+    await deleteTemplate(params.id, await requireSelf(req.nextUrl.searchParams.get("landlordEmail")));
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return errorResponse(error);
+  }
 }

@@ -1,16 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrefs, updatePrefs } from "@/lib/notificationPrefsServer";
+import { errorResponse, requireSelf } from "@/lib/sessionServer";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  const email = req.nextUrl.searchParams.get("email");
-  if (!email) return NextResponse.json({ error: "email query param is required" }, { status: 400 });
-  const prefs = await getPrefs(email);
-  return NextResponse.json({ prefs });
+  try {
+    const email = await requireSelf(req.nextUrl.searchParams.get("email"));
+    return NextResponse.json({ prefs: await getPrefs(email) });
+  } catch (error) {
+    return errorResponse(error);
+  }
 }
 
 export async function PUT(req: NextRequest) {
-  const { email, ...updates } = await req.json();
-  if (!email) return NextResponse.json({ error: "email is required" }, { status: 400 });
-  const prefs = await updatePrefs(email, updates);
-  return NextResponse.json({ prefs });
+  try {
+    const { email, ...updates } = await req.json();
+    return NextResponse.json({ prefs: await updatePrefs(await requireSelf(email), updates) });
+  } catch (error) {
+    return errorResponse(error);
+  }
 }

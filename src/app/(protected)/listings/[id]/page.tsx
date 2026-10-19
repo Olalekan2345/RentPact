@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
@@ -9,7 +9,10 @@ import { ConditionDeclarationView } from "@/components/ConditionDeclarationView"
 import { Badge, Button, Card, CardContent, Skeleton } from "@/components/ui";
 import { UsdcAmount } from "@/components/UsdcAmount";
 import { FREQUENCY_OPTIONS } from "@/lib/contracts/frequency";
-import { fetchListing, deactivateListing, type Listing } from "@/lib/listings";
+import { fetchListingWithVerification, deactivateListing, type Listing } from "@/lib/listings";
+import type { ListingVerificationSummary } from "@/lib/verificationModel";
+import { ListingTrustPanel } from "@/components/verification/ListingTrustPanel";
+import { ListingVerificationBadge, VerifiedLandlordBadge } from "@/components/verification/VerificationBadge";
 import type { LeaseDraft } from "@/lib/leaseDraft";
 import { useCautionFeeLabel } from "@/lib/cautionFee";
 import { getCautionReturnRate, type CautionReturnRate } from "@/lib/leaseData";
@@ -22,6 +25,7 @@ export default function ListingDetailPage() {
   const router = useRouter();
 
   const [listing, setListing] = useState<Listing | null | undefined>(undefined);
+  const [verification, setVerification] = useState<ListingVerificationSummary | null>(null);
   const [deactivating, setDeactivating] = useState(false);
   const [cautionReturnRate, setCautionReturnRate] = useState<CautionReturnRate | null | undefined>(undefined);
   const [landlordSummaries, setLandlordSummaries] = useState<Record<string, ReviewSummary> | undefined>(undefined);
@@ -31,9 +35,16 @@ export default function ListingDetailPage() {
     if (!isLoading && !session) router.push("/auth");
   }, [isLoading, session, router]);
 
-  useEffect(() => {
-    fetchListing(id).then(setListing);
+  const load = useCallback(() => {
+    fetchListingWithVerification(id).then((r) => {
+      setListing(r?.listing ?? null);
+      setVerification(r?.verification ?? null);
+    });
   }, [id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   useEffect(() => {
     if (!listing || !listing.landlordAddress) return;
@@ -62,6 +73,7 @@ export default function ListingDetailPage() {
   }
 
   const isOwnListing = listing.landlordEmail === session.email;
+  const rentable = listing.active && (listing.verificationStatus === "approved" || listing.verificationStatus === "unverified");
   const frequencyLabel = FREQUENCY_OPTIONS.find((f) => f.value === listing.frequency)?.label ?? listing.frequency;
   const total = listing.amountPerPeriod * listing.totalPeriods;
 
@@ -114,6 +126,7 @@ export default function ListingDetailPage() {
                   {listing.propertyType}
                 </Badge>
               </div>
+              <ListingVerificationBadge status={listing.verificationStatus} className="mt-2" />
 
               <dl className="mt-5 flex flex-col gap-3 border-y border-forest-100 py-5 text-sm">
                 <Row label="Rent per period" value={<UsdcAmount amount={listing.amountPerPeriod} />} />
@@ -151,6 +164,7 @@ export default function ListingDetailPage() {
                     >
                       {listing.landlordEmail}
                     </Link>
+                    {listing.landlordVerified && <VerifiedLandlordBadge />}
                     <RatingBadge
                       summary={roleSummaryOf(landlordSummaries, listing.landlordEmail, "landlord")}
                       emptyLabel="New landlord · no reviews yet"
@@ -168,9 +182,11 @@ export default function ListingDetailPage() {
                 </div>
               ) : (
                 <div className="mt-6 flex flex-col gap-3">
-                  <Button size="lg" className="w-full" onClick={handleRent}>
-                    Deposit &amp; rent this property
-                  </Button>
+                  {rentable && (
+                    <Button size="lg" className="w-full" onClick={handleRent}>
+                      Deposit &amp; rent this property
+                    </Button>
+                  )}
                   <Link href={`/messages/listing/${listing.id}`}>
                     <Button variant="secondary" size="lg" className="w-full">
                       Message landlord
@@ -180,6 +196,10 @@ export default function ListingDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {verification && (
+            <ListingTrustPanel listing={listing} verification={verification} isOwner={isOwnListing} onChanged={load} />
+          )}
 
           {listing.amenities.length > 0 && (
             <Card className="mt-6">

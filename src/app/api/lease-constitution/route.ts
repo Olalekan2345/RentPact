@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { recordLeaseConstitution, getLeaseConstitution } from "@/lib/leaseConstitutionServer";
+import { requireLeaseAccess } from "@/lib/leaseAccessServer";
+import { errorResponse, HttpError, requireUser } from "@/lib/sessionServer";
 
 export async function GET(req: NextRequest) {
   const leaseId = req.nextUrl.searchParams.get("leaseId");
@@ -8,11 +10,18 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ record });
 }
 
+/** Records which Constitution version a lease's parties accepted — by one of those parties. */
 export async function POST(req: NextRequest) {
-  const { leaseId, version, hash, acceptedAt } = await req.json();
-  if (!leaseId || !version || !hash || !acceptedAt) {
-    return NextResponse.json({ error: "leaseId, version, hash, acceptedAt are required" }, { status: 400 });
+  try {
+    const user = await requireUser();
+    const { leaseId, version, hash, acceptedAt } = await req.json();
+    if (!leaseId || !version || !hash || !acceptedAt) {
+      throw new HttpError("leaseId, version, hash, acceptedAt are required", 400);
+    }
+    await requireLeaseAccess(String(leaseId), user);
+    await recordLeaseConstitution({ leaseId, version, hash, acceptedAt });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return errorResponse(error);
   }
-  await recordLeaseConstitution({ leaseId, version, hash, acceptedAt });
-  return NextResponse.json({ ok: true });
 }

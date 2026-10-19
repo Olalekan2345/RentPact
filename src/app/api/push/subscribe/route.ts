@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { savePushSubscription } from "@/lib/pushServer";
+import { errorResponse, HttpError, requireSelf } from "@/lib/sessionServer";
 
+/** Subscribes this device to the signed-in user's own notifications (never someone else's). */
 export async function POST(req: NextRequest) {
   try {
     const { email, subscription } = await req.json();
-    if (!email || !subscription?.endpoint) {
-      return NextResponse.json({ error: "email and subscription are required" }, { status: 400 });
-    }
-    await savePushSubscription(email, subscription);
+    if (!subscription?.endpoint) throw new HttpError("subscription is required", 400);
+    await savePushSubscription(await requireSelf(email), subscription);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+    return errorResponse(error);
   }
 }

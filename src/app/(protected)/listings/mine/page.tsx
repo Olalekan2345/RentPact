@@ -10,11 +10,14 @@ import { UsdcAmount } from "@/components/UsdcAmount";
 import { Badge, Button, Skeleton } from "@/components/ui";
 import { FREQUENCY_OPTIONS } from "@/lib/contracts/frequency";
 import { fetchListingsForLandlord, type Listing } from "@/lib/listings";
+import { fetchMyVerification, type MyVerification } from "@/lib/verification";
+import { ListingVerificationBadge } from "@/components/verification/VerificationBadge";
 
 export default function MyPropertiesPage() {
   const { session, isLoading } = useAuth();
   const router = useRouter();
   const [listings, setListings] = useState<Listing[] | null>(null);
+  const [verification, setVerification] = useState<MyVerification | null>(null);
 
   useEffect(() => {
     if (!isLoading && !session) router.push("/auth");
@@ -23,6 +26,7 @@ export default function MyPropertiesPage() {
   useEffect(() => {
     if (!session) return;
     fetchListingsForLandlord(session.email).then(setListings);
+    fetchMyVerification().then((r) => setVerification(r?.verification ?? null));
   }, [session]);
 
   if (isLoading || !session) return null;
@@ -47,6 +51,17 @@ export default function MyPropertiesPage() {
           <Button size="sm">List a property</Button>
         </Link>
       </div>
+
+      {verification && verification.status !== "approved" && (
+        <div className="mt-6 rounded-lg border border-gold-200 bg-gold-50 px-4 py-3 text-sm text-gold-700">
+          {verification.status === "pending"
+            ? "Your landlord verification is being reviewed. You can list new properties once it's approved."
+            : "Only verified landlords can list new properties."}{" "}
+          <Link href="/verify" className="font-semibold underline">
+            {verification.status === "pending" ? "See my application" : "Get verified"}
+          </Link>
+        </div>
+      )}
 
       <div className="mt-8">
         {listings === null ? (
@@ -92,9 +107,11 @@ export default function MyPropertiesPage() {
                     </div>
                   </Link>
                   <div className="flex shrink-0 flex-col items-end gap-2">
-                    <Badge variant={listing.active ? "forest" : "neutral"}>
-                      {listing.active ? "Live" : "Rented"}
-                    </Badge>
+                    {listing.active && listing.verificationStatus !== "approved" && listing.verificationStatus !== "unverified" ? (
+                      <ListingVerificationBadge status={listing.verificationStatus} />
+                    ) : (
+                      <Badge variant={listing.active ? "forest" : "neutral"}>{listing.active ? "Live" : "Rented"}</Badge>
+                    )}
                     {!listing.active && (
                       <Link href={`/listings/new?from=${listing.id}`}>
                         <Button size="sm" variant="secondary">

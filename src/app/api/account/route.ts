@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { deleteProfile } from "@/lib/profileServer";
 import { deactivateAllListingsForLandlord } from "@/lib/listingServer";
 import { deleteAllUserData as deletePrivacyPrefs } from "@/lib/privacyServer";
+import { errorResponse, requireSelf } from "@/lib/sessionServer";
+
+export const dynamic = "force-dynamic";
 
 /**
  * "Delete account" scrubs personal profile data (name/photo) and
@@ -12,10 +15,12 @@ import { deleteAllUserData as deletePrivacyPrefs } from "@/lib/privacyServer";
  * shortcut: most real financial platforms behave the same way.
  */
 export async function DELETE(req: NextRequest) {
-  const email = req.nextUrl.searchParams.get("email");
-  if (!email) return NextResponse.json({ error: "email query param is required" }, { status: 400 });
-
-  await Promise.all([deleteProfile(email), deactivateAllListingsForLandlord(email), deletePrivacyPrefs(email)]);
-
-  return NextResponse.json({ ok: true });
+  try {
+    // Only the signed-in user can delete their own account.
+    const email = await requireSelf(req.nextUrl.searchParams.get("email"));
+    await Promise.all([deleteProfile(email), deactivateAllListingsForLandlord(email), deletePrivacyPrefs(email)]);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return errorResponse(error);
+  }
 }

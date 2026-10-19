@@ -1,18 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listTemplatesForLandlord, createTemplate } from "@/lib/templateServer";
+import { errorResponse, HttpError, requireSelf } from "@/lib/sessionServer";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  const landlordEmail = req.nextUrl.searchParams.get("landlordEmail");
-  if (!landlordEmail) return NextResponse.json({ error: "landlordEmail query param is required" }, { status: 400 });
-  const templates = await listTemplatesForLandlord(landlordEmail);
-  return NextResponse.json({ templates });
+  try {
+    const landlordEmail = await requireSelf(req.nextUrl.searchParams.get("landlordEmail"));
+    return NextResponse.json({ templates: await listTemplatesForLandlord(landlordEmail) });
+  } catch (error) {
+    return errorResponse(error);
+  }
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    const landlordEmail = await requireSelf(body.landlordEmail);
     const {
-      landlordEmail,
       name,
       propertyType,
       amenities,
@@ -26,12 +31,12 @@ export async function POST(req: NextRequest) {
       maintenanceTenant,
     } = body;
 
-    if (!landlordEmail || !name || !propertyType || !amountPerPeriod || !totalPeriods || !frequency) {
-      return NextResponse.json({ error: "Missing required template fields" }, { status: 400 });
+    if (!name || !propertyType || !amountPerPeriod || !totalPeriods || !frequency) {
+      throw new HttpError("Missing required template fields", 400);
     }
 
     const template = await createTemplate({
-      landlordEmail: landlordEmail.trim().toLowerCase(),
+      landlordEmail,
       name,
       propertyType,
       amenities: amenities ?? [],
@@ -46,6 +51,6 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json({ template });
   } catch (error) {
-    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+    return errorResponse(error);
   }
 }

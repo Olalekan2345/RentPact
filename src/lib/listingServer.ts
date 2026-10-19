@@ -4,6 +4,8 @@ import type { ReleaseFrequency } from "@/components/escrow";
 import type { ConditionDeclaration } from "@/lib/condition";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { ensureProfile } from "@/lib/profileServer";
+import { PUBLIC_LISTING_STATUSES, approvedLandlords } from "@/lib/verificationServer";
+import type { ListingVerificationStatus } from "@/lib/verificationModel";
 
 /**
  * Server-side property listing store, backed by Postgres (Supabase).
@@ -36,7 +38,15 @@ export interface Listing {
   securityDeposit: number | null;
   houseRules: string;
   noticePeriodDays: number | null;
+  /** RentPact's review of this property — see verificationServer.ts. */
+  verificationStatus: ListingVerificationStatus;
+  verifiedAt: number | null;
+  /** Whether the landlord's own identity has been verified (filled in by the list/get helpers). */
+  landlordVerified: boolean;
 }
+
+/** Fields a landlord supplies; the rest is set by the server. */
+export type NewListing = Omit<Listing, "id" | "createdAt" | "active" | "verificationStatus" | "verifiedAt" | "landlordVerified">;
 
 function fromRow(row: {
   id: string;
@@ -55,6 +65,8 @@ function fromRow(row: {
   security_deposit: number | null;
   house_rules: string;
   notice_period_days: number | null;
+  verification_status?: string | null;
+  verified_at?: number | null;
 }): Listing {
   return {
     id: row.id,
@@ -73,24 +85,38 @@ function fromRow(row: {
     securityDeposit: row.security_deposit,
     houseRules: row.house_rules,
     noticePeriodDays: row.notice_period_days,
+    verificationStatus: (row.verification_status as ListingVerificationStatus | null) ?? "unverified",
+    verifiedAt: row.verified_at ?? null,
+    landlordVerified: false,
   };
 }
 
+async function withLandlordVerification(listings: Listing[]): Promise<Listing[]> {
+  const approved = await approvedLandlords(listings.map((l) => l.landlordEmail));
+  return listings.map((l) => ({ ...l, landlordVerified: approved.has(l.landlordEmail) }));
+}
+
+/** What tenants can browse: live listings that are verified, or were published before verification existed. */
 export async function listActiveListings(): Promise<Listing[]> {
   const { data } = await supabaseAdmin()
     .from("listings")
     .select()
     .eq("active", true)
+    .in("verification_status", PUBLIC_LISTING_STATUSES)
     .order("created_at", { ascending: false });
-  return (data ?? []).map(fromRow);
+  return withLandlordVerification((data ?? []).map(fromRow));
 }
 
+/** Any listing, whatever its status — callers decide who may see a pending or rejected one. */
 export async function getListing(id: string): Promise<Listing | null> {
   const { data } = await supabaseAdmin().from("listings").select().eq("id", id).maybeSingle();
-  return data ? fromRow(data) : null;
+  return data ? (await withLandlordVerification([fromRow(data)]))[0] : null;
 }
 
-export async function createListing(input: Omit<Listing, "id" | "createdAt" | "active">): Promise<Listing> {
+export async function createListing(
+  input: NewListing,
+  verificationStatus: Extract<ListingVerificationStatus, "pending" | "approved">,
+): Promise<Listing> {
   await ensureProfile(input.landlordEmail);
 
   const listing: Listing = {
@@ -98,6 +124,9 @@ export async function createListing(input: Omit<Listing, "id" | "createdAt" | "a
     id: crypto.randomUUID(),
     createdAt: Date.now(),
     active: true,
+    verificationStatus,
+    verifiedAt: null,
+    landlordVerified: true,
   };
 
   const { error } = await supabaseAdmin()
@@ -119,6 +148,7 @@ export async function createListing(input: Omit<Listing, "id" | "createdAt" | "a
       security_deposit: listing.securityDeposit,
       house_rules: listing.houseRules,
       notice_period_days: listing.noticePeriodDays,
+      verification_status: verificationStatus,
     });
   if (error) throw error;
 
@@ -135,32 +165,38 @@ export async function deactivateListing(id: string): Promise<void> {
  * either's deposit lands. The `.eq("active", true)` predicate means only one
  * concurrent request can actually flip a row — Postgres serializes the
  * update, so a second caller sees zero rows affected and gets `false`.
- * Returns whether *this* call was the one that claimed it.
+ * Returns whether *this* call was the one that claimed it. Only listings tenants can see may be claimed,
+ * and the claim records who made it, so only that tenant can release it again.
  */
-export async function reserveListing(id: string): Promise<boolean> {
+export async function reserveListing(id: string, tenantEmail: string): Promise<boolean> {
   const { data, error } = await supabaseAdmin()
     .from("listings")
-    .update({ active: false })
+    .update({ active: false, reserved_by: tenantEmail })
     .eq("id", id)
     .eq("active", true)
+    .in("verification_status", PUBLIC_LISTING_STATUSES)
+    .neq("landlord_email", tenantEmail)
     .select("id");
   if (error) throw error;
   return (data ?? []).length > 0;
 }
 
-/** Rolls back a reserveListing() claim when the deposit that followed it failed. */
-export async function reactivateListing(id: string): Promise<void> {
-  await supabaseAdmin().from("listings").update({ active: true }).eq("id", id);
+/** Rolls back a reserveListing() claim when the deposit that followed it failed — only by the tenant who made it. */
+export async function reactivateListing(id: string, tenantEmail: string): Promise<void> {
+  await supabaseAdmin()
+    .from("listings")
+    .update({ active: true, reserved_by: null })
+    .eq("id", id)
+    .eq("reserved_by", tenantEmail);
 }
 
-export async function listListingsForLandlord(landlordEmail: string): Promise<Listing[]> {
+/** A landlord's listings. `includePrivate` (the landlord themselves) adds pending and rejected ones. */
+export async function listListingsForLandlord(landlordEmail: string, includePrivate = false): Promise<Listing[]> {
   const normalized = landlordEmail.trim().toLowerCase();
-  const { data } = await supabaseAdmin()
-    .from("listings")
-    .select()
-    .eq("landlord_email", normalized)
-    .order("created_at", { ascending: false });
-  return (data ?? []).map(fromRow);
+  let query = supabaseAdmin().from("listings").select().eq("landlord_email", normalized);
+  if (!includePrivate) query = query.in("verification_status", PUBLIC_LISTING_STATUSES);
+  const { data } = await query.order("created_at", { ascending: false });
+  return withLandlordVerification((data ?? []).map(fromRow));
 }
 
 export async function deactivateAllListingsForLandlord(landlordEmail: string): Promise<void> {

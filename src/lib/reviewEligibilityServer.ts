@@ -2,9 +2,7 @@ import "server-only";
 import { supabaseRouteHandler } from "@/lib/supabase/route-handler";
 import { getLeaseMetadata } from "@/lib/leaseMetadataServer";
 import { readLease } from "@/lib/contracts/onChainLease";
-import { circleCreateUserToken, circleListWallets } from "@/lib/circleServer";
-import { circleUserIdFromEmail } from "@/lib/circleUserId";
-import { envResult } from "@/lib/env";
+import { isMockMode, walletAddressesFor } from "@/lib/sessionServer";
 import type { ReviewRole } from "@/lib/reviewModel";
 
 /**
@@ -31,8 +29,6 @@ export class ReviewAccessError extends Error {
   }
 }
 
-const isMockMode = () => (envResult.success ? envResult.env.NEXT_PUBLIC_MOCK_MODE : true);
-
 /** The caller's email, verified from their Supabase session cookie. */
 export async function requireSessionEmail(): Promise<string> {
   let email: string | undefined;
@@ -46,20 +42,6 @@ export async function requireSessionEmail(): Promise<string> {
   }
   if (!email) throw new ReviewAccessError("Please sign in again to continue.", 401);
   return email;
-}
-
-/** Every Arc wallet address the Circle user behind `email` controls (lowercased). */
-async function walletAddressesFor(email: string): Promise<string[]> {
-  try {
-    const tokenJson = await circleCreateUserToken(circleUserIdFromEmail(email));
-    const userToken: string | undefined = tokenJson?.data?.userToken;
-    if (!userToken) return [];
-    const walletsJson = await circleListWallets(userToken);
-    const wallets: { address?: string }[] = walletsJson?.data?.wallets ?? [];
-    return wallets.flatMap((w) => (w.address ? [w.address.toLowerCase()] : []));
-  } catch {
-    return [];
-  }
 }
 
 export interface ReviewEligibility {

@@ -3,6 +3,7 @@
 import type { Address } from "viem";
 import type { ReleaseFrequency } from "@/components/escrow";
 import type { ConditionDeclaration } from "@/lib/condition";
+import type { ListingVerificationStatus, ListingVerificationSummary, VerificationDocument } from "@/lib/verificationModel";
 
 export interface Listing {
   id: string;
@@ -21,6 +22,9 @@ export interface Listing {
   securityDeposit: number | null;
   houseRules: string;
   noticePeriodDays: number | null;
+  verificationStatus: ListingVerificationStatus;
+  verifiedAt: number | null;
+  landlordVerified: boolean;
 }
 
 export async function fetchActiveListings(): Promise<Listing[]> {
@@ -38,14 +42,25 @@ export async function fetchListingsForLandlord(landlordEmail: string): Promise<L
 }
 
 export async function fetchListing(id: string): Promise<Listing | null> {
+  return (await fetchListingWithVerification(id))?.listing ?? null;
+}
+
+export async function fetchListingWithVerification(
+  id: string,
+): Promise<{ listing: Listing; verification: ListingVerificationSummary } | null> {
   const res = await fetch(`/api/listings/${id}`);
   if (!res.ok) return null;
   const json = await res.json();
-  return json.listing ?? null;
+  return json.listing ? { listing: json.listing, verification: json.verification } : null;
+}
+
+/** The property's ownership documents, sent with a new listing for RentPact to check. */
+export interface PropertyDocuments {
+  titleDocumentType: string;
+  documents: VerificationDocument[];
 }
 
 export interface CreateListingInput {
-  landlordEmail: string;
   landlordAddress: Address;
   propertyAddress: string;
   propertyType: string;
@@ -58,17 +73,44 @@ export interface CreateListingInput {
   securityDeposit: number | null;
   houseRules: string;
   noticePeriodDays: number | null;
+  /** "List again": keeps an approved property's verification if the address hasn't changed. */
+  relistOf?: string;
 }
 
-export async function createListing(input: CreateListingInput): Promise<Listing> {
+/**
+ * Publishes a listing for the signed-in landlord (the server takes who they are from the session).
+ * `needsDocuments` means a re-list couldn't keep its old approval and must be sent with documents.
+ */
+export async function createListing(
+  input: CreateListingInput & Partial<PropertyDocuments>,
+): Promise<{ listing: Listing; needsDocuments: boolean }> {
   const res = await fetch("/api/listings", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  if (!res.ok) throw new Error("Could not create listing.");
-  const json = await res.json();
-  return json.listing;
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error ?? "Could not create listing.");
+  return { listing: json.listing, needsDocuments: json.needsDocuments === true };
+}
+
+/** Sends one of your own listings for verification with its documents. */
+export async function submitListingDocuments(id: string, docs: PropertyDocuments): Promise<void> {
+  const res = await fetch(`/api/listings/${id}/verification`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(docs),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Could not send the documents.");
+}
+
+export async function reportListing(id: string, reason: string): Promise<void> {
+  const res = await fetch(`/api/listings/${id}/report`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Could not send the report.");
 }
 
 export async function deactivateListing(id: string): Promise<void> {

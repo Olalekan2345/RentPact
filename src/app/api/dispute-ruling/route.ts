@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { recordDisputeRuling, getDisputeRulingsForLease } from "@/lib/disputeRulingServer";
+import { isArbiterEmail } from "@/lib/leaseAccessServer";
+import { errorResponse, HttpError, isMockMode, requireUser } from "@/lib/sessionServer";
 
 export async function GET(req: NextRequest) {
   const leaseId = req.nextUrl.searchParams.get("leaseId");
@@ -8,11 +10,18 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ records });
 }
 
+/** The arbiter's written reasoning for a ruling — only the arbiter can record one. */
 export async function POST(req: NextRequest) {
-  const { leaseId, resolvedAt, reasoning } = await req.json();
-  if (!leaseId || !resolvedAt || !reasoning) {
-    return NextResponse.json({ error: "leaseId, resolvedAt, reasoning are required" }, { status: 400 });
+  try {
+    const user = await requireUser();
+    const { leaseId, resolvedAt, reasoning } = await req.json();
+    if (!leaseId || !resolvedAt || !reasoning) throw new HttpError("leaseId, resolvedAt, reasoning are required", 400);
+    if (!isMockMode() && !(await isArbiterEmail(user.email))) {
+      throw new HttpError("Only the arbiter can record a ruling.", 403);
+    }
+    const record = await recordDisputeRuling({ leaseId, resolvedAt, reasoning });
+    return NextResponse.json({ record });
+  } catch (error) {
+    return errorResponse(error);
   }
-  const record = await recordDisputeRuling({ leaseId, resolvedAt, reasoning });
-  return NextResponse.json({ record });
 }

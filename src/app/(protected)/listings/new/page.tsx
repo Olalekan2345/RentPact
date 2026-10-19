@@ -12,7 +12,9 @@ import { CurrencyEquivalent } from "@/components/CurrencyEquivalent";
 import { useCautionFeeLabel, suggestedCautionRange, isCautionFeeHigh } from "@/lib/cautionFee";
 import { FREQUENCY_OPTIONS, INTERVAL_DAYS } from "@/lib/contracts/frequency";
 import { UsdcAmount } from "@/components/UsdcAmount";
-import { createListing, fetchListing } from "@/lib/listings";
+import { createListing, fetchListing, type PropertyDocuments } from "@/lib/listings";
+import { fetchMyVerification, type MyVerification } from "@/lib/verification";
+import { PropertyDocumentsForm, propertyDocumentsComplete } from "@/components/verification/DocumentUpload";
 import { fetchTemplates, saveTemplate, type LeaseTemplate } from "@/lib/templates";
 import { resizeImageToDataUrl, uploadDataUrl, uploadImage, uploadFile } from "@/lib/image";
 import {
@@ -88,6 +90,12 @@ function NewListingForm() {
   const searchParams = useSearchParams();
   const prefilledRef = useRef(false);
   const [relisting, setRelisting] = useState(false);
+  // "List again" of a property RentPact already verified keeps its approval if the address is unchanged.
+  const [relistSource, setRelistSource] = useState<{ id: string; address: string; verified: boolean } | null>(null);
+
+  // Only verified landlords can list; every new property also needs its ownership documents.
+  const [verification, setVerification] = useState<MyVerification | null | undefined>(undefined);
+  const [propertyDocs, setPropertyDocs] = useState<PropertyDocuments>({ titleDocumentType: "", documents: [] });
 
   const [step, setStep] = useState(0);
 
@@ -142,6 +150,7 @@ function NewListingForm() {
   useEffect(() => {
     if (!session) return;
     fetchTemplates(session.email).then(setTemplates);
+    fetchMyVerification().then((r) => setVerification(r?.verification ?? null));
   }, [session]);
 
   // Re-listing: prefill every field from a previous listing (?from=<id>), so a
@@ -176,6 +185,7 @@ function NewListingForm() {
         setVideoUrl(l.condition.videoUrl ?? "");
       }
       setRelisting(true);
+      setRelistSource({ id: l.id, address: l.propertyAddress, verified: l.verificationStatus === "approved" });
     });
   }, [searchParams]);
 
@@ -194,6 +204,12 @@ function NewListingForm() {
     const t = setTimeout(() => setReviewSettling(false), 600);
     return () => clearTimeout(t);
   }, [step]);
+
+  const normalizeAddress = (a: string) => a.trim().toLowerCase().replace(/\s+/g, " ");
+  const keepsApproval =
+    relistSource !== null && relistSource.verified && normalizeAddress(relistSource.address) === normalizeAddress(propertyAddress);
+  const landlordRole = verification?.role ?? null;
+  const docsReady = keepsApproval || propertyDocumentsComplete(propertyDocs, landlordRole);
 
   const amountNum = Number(amountPerPeriod) || 0;
   const periodsNum = Number(totalPeriods) || 0;
@@ -300,8 +316,9 @@ function NewListingForm() {
         condition = { ...base, hash };
       }
 
-      const listing = await createListing({
-        landlordEmail: session.email,
+      const { listing } = await createListing({
+        ...(keepsApproval ? {} : propertyDocs),
+        relistOf: relistSource?.id,
         landlordAddress: session.address,
         propertyAddress,
         propertyType,
@@ -334,8 +351,8 @@ function NewListingForm() {
       }
 
       router.push(`/listings/${listing.id}`);
-    } catch {
-      setSubmitError("Could not publish this listing. Please try again.");
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Could not publish this listing. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -424,13 +441,17 @@ function NewListingForm() {
     }
   };
 
-  if (isLoading || !session) return null;
+  if (isLoading || !session || verification === undefined) return null;
+
+  if (verification?.status !== "approved") {
+    return <VerificationGate verification={verification} />;
+  }
 
   return (
       <div className="mx-auto max-w-2xl px-4 py-10 sm:px-8">
         <h1 className="text-3xl text-ink">{relisting ? "List this property again" : "List a property"}</h1>
         <p className="mt-1 text-ink-muted">
-          Set your terms — tenants can find and rent this once it&apos;s published.
+          Set your terms — tenants can find and rent this once RentPact has verified the property.
         </p>
 
         {relisting && (
@@ -1014,6 +1035,22 @@ function NewListingForm() {
               )}
 
               <Card>
+                <CardContent className="flex flex-col gap-4 pt-6">
+                  <div>
+                    <h2 className="text-lg font-semibold text-ink">Ownership documents</h2>
+                    <p className="mt-1 text-sm text-ink-muted">
+                      {keepsApproval
+                        ? "RentPact already verified this property for you, so it goes live as soon as you publish."
+                        : "RentPact checks every property before tenants can see it. This keeps fake listings off the platform."}
+                    </p>
+                  </div>
+                  {!keepsApproval && (
+                    <PropertyDocumentsForm value={propertyDocs} onChange={setPropertyDocs} role={landlordRole} />
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
                 <CardContent className="flex flex-col gap-3 pt-6">
                   <label className="flex items-center gap-2 text-sm font-medium text-ink-muted">
                     <input
@@ -1050,13 +1087,39 @@ function NewListingForm() {
                 Continue
               </Button>
             ) : (
-              <Button type="submit" size="lg" className="flex-1" disabled={submitting || reviewSettling}>
-                {submitting ? "Publishing…" : "Publish listing"}
+              <Button type="submit" size="lg" className="flex-1" disabled={submitting || reviewSettling || !docsReady}>
+                {submitting ? "Sending…" : keepsApproval ? "Publish listing" : "Send for verification"}
               </Button>
             )}
           </div>
         </form>
       </div>
+  );
+}
+
+/** Shown instead of the form to anyone who isn't a verified landlord yet. */
+function VerificationGate({ verification }: { verification: MyVerification | null }) {
+  const status = verification?.status ?? "none";
+  const message =
+    status === "pending"
+      ? "We're reviewing your landlord application. You'll be able to list properties as soon as you're approved."
+      : status === "rejected"
+        ? "Your landlord application needs another look before you can list properties."
+        : status === "revoked"
+          ? "Your landlord verification was revoked, so you can't list properties."
+          : "To keep fake landlords off RentPact, only verified landlords can list properties. It takes a few minutes to apply.";
+  return (
+    <div className="mx-auto max-w-xl px-4 py-16 sm:px-8">
+      <Card>
+        <CardContent className="flex flex-col items-start gap-4 pt-6">
+          <h1 className="text-2xl text-ink">Get verified to list properties</h1>
+          <p className="text-ink-muted">{message}</p>
+          <Link href="/verify">
+            <Button>{status === "pending" ? "See my application" : status === "rejected" ? "Fix my application" : "Get verified"}</Button>
+          </Link>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

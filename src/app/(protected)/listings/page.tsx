@@ -13,6 +13,7 @@ import { FREQUENCY_OPTIONS } from "@/lib/contracts/frequency";
 import { fetchActiveListings, type Listing } from "@/lib/listings";
 import { fetchReviewSummaries, type ReviewSummary, type RoleSummary } from "@/lib/reviews";
 import { RatingBadge, roleSummaryOf } from "@/components/reviews";
+import { ListingVerificationBadge, VerifiedLandlordBadge } from "@/components/verification/VerificationBadge";
 
 export default function BrowseListingsPage() {
   const { session, isLoading } = useAuth();
@@ -38,7 +39,9 @@ export default function BrowseListingsPage() {
   return (
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
         <h1 className="text-3xl text-ink">Find a place to rent</h1>
-        <p className="mt-1 text-ink-muted">Every listing here is escrow-protected the moment you deposit.</p>
+        <p className="mt-1 text-ink-muted">
+          Every listing here is escrow-protected the moment you deposit. Verified listings have been checked by RentPact.
+        </p>
 
         <div className="mt-8">
           {listings === null ? (
@@ -86,13 +89,16 @@ function ListingCard({
       href={`/listings/${listing.id}`}
       className="group block overflow-hidden rounded-lg border border-forest-100/60 bg-cream-100 shadow-card transition-shadow hover:shadow-lifted"
     >
-      <PropertyImage
-        seed={listing.id}
-        propertyType={listing.propertyType}
-        overrideUrl={listing.photoUrl}
-        alt={listing.propertyAddress}
-        className="h-40 w-full"
-      />
+      <div className="relative">
+        <PropertyImage
+          seed={listing.id}
+          propertyType={listing.propertyType}
+          overrideUrl={listing.photoUrl}
+          alt={listing.propertyAddress}
+          className="h-40 w-full"
+        />
+        <ListingVerificationBadge status={listing.verificationStatus} className="absolute left-3 top-3 shadow-soft" />
+      </div>
       <div className="p-5">
         <div className="flex items-start justify-between gap-3">
           <h3 className="font-serif text-lg text-ink">{listing.propertyAddress}</h3>
@@ -100,8 +106,9 @@ function ListingCard({
             {listing.propertyType}
           </Badge>
         </div>
-        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-ink-soft">
+        <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-ink-soft">
           Landlord
+          {listing.landlordVerified && <VerifiedLandlordBadge />}
           <RatingBadge summary={landlordRating} emptyLabel="New · no reviews yet" />
         </p>
         <div className="mt-4 flex items-center justify-between text-sm">

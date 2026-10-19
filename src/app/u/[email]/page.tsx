@@ -26,6 +26,8 @@ import { fetchPrivacyPrefs, type PrivacyPrefs } from "@/lib/privacy";
 import { TenancyCredentialCard } from "@/components/TenancyCredentialCard";
 import { ReviewsSection } from "@/components/reviews";
 import { RentalHistory } from "@/components/RentalHistory";
+import { fetchLandlordBadge } from "@/lib/verification";
+import { VerifiedLandlordBadge } from "@/components/verification/VerificationBadge";
 
 export default function PublicProfilePage() {
   const { email: rawEmail } = useParams<{ email: string }>();
@@ -44,6 +46,7 @@ export default function PublicProfilePage() {
   const [landlordLeases, setLandlordLeases] = useState<Lease[] | null>(null);
   const [reviews, setReviews] = useState<Review[] | null>(null);
   const [credentials, setCredentials] = useState<TenancyCredentialSummary[] | null>(null);
+  const [verifiedLandlord, setVerifiedLandlord] = useState(false);
   const cautionLabel = useCautionFeeLabel();
 
   useEffect(() => {
@@ -54,6 +57,7 @@ export default function PublicProfilePage() {
     fetchProfile(email).then(setProfile);
     fetchPrivacyPrefs(email).then(setPrefs);
     fetchReviewsFor(email).then(setReviews);
+    fetchLandlordBadge(email).then((b) => setVerifiedLandlord(b.verified));
 
     const canScanChain = MOCK_MODE || !!address;
     if (canScanChain) {
@@ -100,6 +104,7 @@ export default function PublicProfilePage() {
             <p className="text-sm text-ink-soft">
               Member since {profile ? formatDate(new Date(profile.memberSince)) : "…"}
             </p>
+            {verifiedLandlord && <VerifiedLandlordBadge className="mt-1" />}
           </div>
         </div>
 

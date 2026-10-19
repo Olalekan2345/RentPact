@@ -23,6 +23,16 @@ import { fetchProfile, type UserProfile } from "@/lib/profile";
 import { fetchReviewsFor, type Review } from "@/lib/reviews";
 import { ReviewsSection } from "@/components/reviews";
 import { RentalHistory } from "@/components/RentalHistory";
+import { fetchMyVerification, type MyVerification } from "@/lib/verification";
+import { VerifiedLandlordBadge } from "@/components/verification/VerificationBadge";
+
+const VERIFICATION_TEXT: Record<MyVerification["status"], string> = {
+  none: "Get verified to list properties. Tenants trust verified landlords.",
+  pending: "Your application is being reviewed.",
+  approved: "Tenants see you as a verified landlord.",
+  rejected: "Your application needs another look.",
+  revoked: "Your verification was revoked.",
+};
 
 export default function ProfilePage() {
   const { session, isLoading } = useAuth();
@@ -37,6 +47,7 @@ export default function ProfilePage() {
   const [myListings, setMyListings] = useState<Listing[] | null>(null);
   const [reviews, setReviews] = useState<Review[] | null>(null);
   const [credentials, setCredentials] = useState<TenancyCredentialSummary[] | null>(null);
+  const [verification, setVerification] = useState<{ verification: MyVerification; isReviewer: boolean } | null>(null);
   const cautionLabel = useCautionFeeLabel();
 
   useEffect(() => {
@@ -53,6 +64,7 @@ export default function ProfilePage() {
     fetchListingsForLandlord(session.email).then(setMyListings);
     fetchReviewsFor(session.email).then(setReviews);
     getTenancyCredentials(session.address).then(setCredentials);
+    fetchMyVerification().then(setVerification);
   }, [session]);
 
   if (isLoading || !session) return null;
@@ -85,6 +97,7 @@ export default function ProfilePage() {
                   <p className="text-sm text-ink-soft">
                     Member since {profile ? formatDate(new Date(profile.memberSince)) : "…"}
                   </p>
+                  {verification?.verification.status === "approved" && <VerifiedLandlordBadge className="mt-1" />}
                 </div>
               </div>
               <Link href="/settings/account">
@@ -156,6 +169,37 @@ export default function ProfilePage() {
           reviews={reviews}
           emptyText="No reviews yet — your tenants and landlords can review you once the first rent payment on a lease is released."
         />
+
+        {/* Landlord verification — needed before listing properties */}
+        {verification && (
+          <Card className="mt-6">
+            <CardContent className="flex items-center justify-between gap-3 pt-6">
+              <div>
+                <p className="text-sm font-semibold text-ink">Landlord verification</p>
+                <p className="mt-1 text-sm text-ink-muted">{VERIFICATION_TEXT[verification.verification.status]}</p>
+              </div>
+              <Link href="/verify">
+                <Button variant="secondary" size="sm">
+                  {verification.verification.status === "none" ? "Get verified" : "View"}
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
+        {verification?.isReviewer && (
+          <Card className="mt-6">
+            <CardContent className="flex items-center justify-between gap-3 pt-6">
+              <div>
+                <p className="text-sm font-semibold text-ink">Review queue</p>
+                <p className="mt-1 text-sm text-ink-muted">Verify landlords and properties, and handle reports.</p>
+              </div>
+              <Link href="/review">
+                <Button size="sm">Open</Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
 
         {/* My properties — summary + link to a dedicated page so the profile stays compact */}
         <Card className="mt-6">

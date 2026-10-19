@@ -8,6 +8,8 @@ import {
   type ResolutionType,
 } from "@/lib/activityEventServer";
 import { reconcileFeedFromChain } from "@/lib/activityReconcileServer";
+import { requireLeaseAccess } from "@/lib/leaseAccessServer";
+import { errorResponse, HttpError, requireUser } from "@/lib/sessionServer";
 
 const VALID_TYPES: ActivityType[] = [
   "deposit",
@@ -46,16 +48,16 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ events });
 }
 
+/** Mirrors an on-chain event into the feed — by a party of that lease (or the arbiter, for rulings). */
 export async function POST(req: NextRequest) {
   try {
+    const user = await requireUser();
     const { id, leaseId, type, timestamp, amount, txHash, landlordBps, resolutionType } = await req.json();
 
     if (!id || !leaseId || !VALID_TYPES.includes(type) || typeof timestamp !== "number") {
-      return NextResponse.json(
-        { error: "id, leaseId, a valid type, and a numeric timestamp are required" },
-        { status: 400 },
-      );
+      throw new HttpError("id, leaseId, a valid type, and a numeric timestamp are required", 400);
     }
+    await requireLeaseAccess(String(leaseId), user, { allowArbiter: true });
 
     await recordActivityEvent({
       id,
@@ -69,6 +71,6 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+    return errorResponse(error);
   }
 }

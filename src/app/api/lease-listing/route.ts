@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { linkLeaseToListing, getListingIdForLease } from "@/lib/leaseListingServer";
+import { requireLeaseAccess } from "@/lib/leaseAccessServer";
+import { errorResponse, HttpError, requireUser } from "@/lib/sessionServer";
 
 export async function GET(req: NextRequest) {
   const leaseId = req.nextUrl.searchParams.get("leaseId");
@@ -8,11 +10,16 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ listingId });
 }
 
+/** Links a lease to the listing it came from — by one of that lease's parties. */
 export async function POST(req: NextRequest) {
-  const { leaseId, listingId } = await req.json();
-  if (!leaseId || !listingId) {
-    return NextResponse.json({ error: "leaseId and listingId are required" }, { status: 400 });
+  try {
+    const user = await requireUser();
+    const { leaseId, listingId } = await req.json();
+    if (!leaseId || !listingId) throw new HttpError("leaseId and listingId are required", 400);
+    await requireLeaseAccess(String(leaseId), user);
+    await linkLeaseToListing(leaseId, listingId);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return errorResponse(error);
   }
-  await linkLeaseToListing(leaseId, listingId);
-  return NextResponse.json({ ok: true });
 }

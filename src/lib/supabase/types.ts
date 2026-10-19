@@ -39,6 +39,51 @@ type ListingsRow = {
   security_deposit: number | null;
   house_rules: string;
   notice_period_days: number | null;
+  verification_status: string;
+  verified_at: number | null;
+  reserved_by: string | null;
+};
+
+/** A document in the private verification-docs bucket (see verificationModel.ts). */
+type VerificationDocumentJson = { kind: "id" | "lasrera" | "title" | "bill" | "authority"; path: string; name: string };
+
+type LandlordVerificationsRow = {
+  email: string;
+  status: "pending" | "approved" | "rejected" | "revoked";
+  full_name: string;
+  phone: string;
+  role: "owner" | "agent";
+  id_type: string;
+  lasrera_number: string | null;
+  documents: VerificationDocumentJson[];
+  submitted_at: number;
+  reviewed_by: string | null;
+  reviewed_at: number | null;
+  review_note: string | null;
+  checks: Record<string, boolean>;
+};
+
+type ListingVerificationsRow = {
+  listing_id: string;
+  landlord_email: string;
+  title_document_type: string | null;
+  documents: VerificationDocumentJson[];
+  submitted_at: number;
+  reviewed_by: string | null;
+  reviewed_at: number | null;
+  review_note: string | null;
+  checks: Record<string, boolean>;
+};
+
+type ListingReportsRow = {
+  id: string;
+  listing_id: string;
+  reporter_email: string;
+  reason: string;
+  created_at: number;
+  resolved_at: number | null;
+  resolved_by: string | null;
+  resolution: string | null;
 };
 
 type MessagesRow = {
@@ -297,6 +342,30 @@ export type Database = {
         Row: PushSubscriptionsRow;
         Insert: PushSubscriptionsRow;
         Update: Partial<PushSubscriptionsRow>;
+        Relationships: [];
+      };
+      landlord_verifications: {
+        Row: LandlordVerificationsRow;
+        Insert: LandlordVerificationsRow;
+        Update: Partial<LandlordVerificationsRow>;
+        Relationships: [];
+      };
+      listing_verifications: {
+        Row: ListingVerificationsRow;
+        Insert: ListingVerificationsRow;
+        Update: Partial<ListingVerificationsRow>;
+        Relationships: [];
+      };
+      listing_reports: {
+        Row: ListingReportsRow;
+        Insert: Partial<ListingReportsRow> & {
+          id: string;
+          listing_id: string;
+          reporter_email: string;
+          reason: string;
+          created_at: number;
+        };
+        Update: Partial<ListingReportsRow>;
         Relationships: [];
       };
     };

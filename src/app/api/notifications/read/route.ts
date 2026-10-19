@@ -1,18 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listReadIds, markRead } from "@/lib/notificationReadServer";
+import { errorResponse, HttpError, requireSelf } from "@/lib/sessionServer";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  const email = req.nextUrl.searchParams.get("email");
-  if (!email) return NextResponse.json({ error: "email query param is required" }, { status: 400 });
-  const readIds = await listReadIds(email);
-  return NextResponse.json({ readIds });
+  try {
+    const email = await requireSelf(req.nextUrl.searchParams.get("email"));
+    return NextResponse.json({ readIds: await listReadIds(email) });
+  } catch (error) {
+    return errorResponse(error);
+  }
 }
 
 export async function POST(req: NextRequest) {
-  const { email, notificationIds } = await req.json();
-  if (!email || !Array.isArray(notificationIds)) {
-    return NextResponse.json({ error: "email and notificationIds[] are required" }, { status: 400 });
+  try {
+    const { email, notificationIds } = await req.json();
+    if (!Array.isArray(notificationIds)) throw new HttpError("notificationIds[] is required", 400);
+    await markRead(await requireSelf(email), notificationIds);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return errorResponse(error);
   }
-  await markRead(email, notificationIds);
-  return NextResponse.json({ ok: true });
 }

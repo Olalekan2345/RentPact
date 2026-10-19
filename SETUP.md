@@ -38,6 +38,7 @@ config (chain IDs, RPC URLs, public contract addresses).
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase project → Settings → API — **server-only, never commit** |
 | `NEXT_PUBLIC_PRIVY_APP_ID` | Optional | Privy dashboard → App settings (step 2b) — enables email-code sign-in |
 | `PRIVY_APP_SECRET` | With the App ID | Privy dashboard → App settings (step 2b) — **server-only, never commit** |
+| `REVIEWER_EMAILS` | To list properties | Comma-separated emails of the RentPact review team (step 2c) |
 | `NEXT_PUBLIC_CIRCLE_APP_ID` | For real Circle mode | Circle console (step 3) |
 | `CIRCLE_API_KEY` | For real Circle mode | Circle console (step 3) — **server-only, never commit** |
 | `CIRCLE_ENTITY_SECRET` | For real Circle mode | Circle console (step 3) — **server-only, never commit** |
@@ -109,6 +110,32 @@ the Circle wallet are keyed by email), so nobody ends up with two accounts.
    `NEXT_PUBLIC_PRIVY_APP_ID` and the **App secret** into `PRIVY_APP_SECRET`.
 
 Leave both blank and the sign-in page shows Google only.
+
+### 2c. Landlord verification (anti-scam)
+
+Only verified landlords can publish listings, and every new property waits
+in a review queue until the RentPact team has checked it
+(`src/lib/verificationServer.ts`):
+
+- **Landlords** apply once at `/verify`: government ID, phone number for a
+  video call, and for agents/caretakers a LASRERA registration number and
+  certificate.
+- **Each property** needs a title document (C of O, Governor's Consent or a
+  registered Deed of Assignment), a recent Land Use Charge or electricity
+  bill for that address, an owner's letter of authority for agents, and a
+  live video walk-through.
+- Reviewers (`REVIEWER_EMAILS` — start with the arbiter account) work the
+  queue at `/review` (also linked from their Profile). Approving requires
+  ticking each check; sending back requires a reason the landlord sees.
+  Tenants can report a listing; reviewers can take it down or revoke the
+  landlord, which takes down all their listings.
+- Documents go to the private `verification-docs` bucket created by
+  `supabase/migrations/0013_landlord_verification.sql`; only reviewers can
+  open them (10-minute signed links) and they're deleted 30 days after a
+  decision.
+
+Listings published before verification existed stay visible with a "Not
+yet verified" label until their landlord sends documents for them.
 
 ## 3. Circle console setup (for real Wallets + Gas Station)
 

@@ -22,6 +22,8 @@ const PROTECTED_PREFIXES = [
   "/profile",
   "/settings",
   "/disputes",
+  "/verify",
+  "/review",
 ];
 
 /** Lease invite links must stay reachable logged-out — the page renders its own inline sign-in. */
