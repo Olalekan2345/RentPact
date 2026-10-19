@@ -2,6 +2,7 @@ import "server-only";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { ensureProfile } from "@/lib/profileServer";
 import { sendPushToEmail } from "@/lib/pushServer";
+import { sendEmail } from "@/lib/emailServer";
 import { HttpError, type SessionUser } from "@/lib/sessionServer";
 import {
   DOCUMENT_RETENTION_DAYS,
@@ -56,8 +57,18 @@ export function requireReviewer(user: SessionUser | null): SessionUser {
   return user;
 }
 
-const notify = (email: string, title: string, body: string, url: string) =>
-  sendPushToEmail(email, { title, body, url, tag: "verification" }).catch(() => undefined);
+/** Push + email about a verification event. Account matters, so the email ignores notification switches. */
+const notify = async (email: string, title: string, body: string, url: string) => {
+  await Promise.allSettled([
+    sendPushToEmail(email, { title, body, url, tag: "verification" }),
+    sendEmail(email, { subject: title, heading: title, paragraphs: [body], cta: { label: "Open RentPact", path: url } }),
+  ]);
+};
+
+/** Tells the review team something new is waiting at /review. */
+const notifyReviewers = async (title: string, body: string) => {
+  await Promise.allSettled(reviewerEmails().map((r) => notify(r, title, body, "/review")));
+};
 
 // ─── Documents ──────────────────────────────────────────────────────────────
 
@@ -220,6 +231,10 @@ export async function submitLandlordApplication(user: SessionUser, body: Record<
   if (error) throw error;
   // A resubmission replaces the earlier documents.
   if (existing) await deleteFiles(existing.documents.filter((d) => !documents.some((n) => n.path === d.path)));
+  await notifyReviewers(
+    "New landlord application",
+    `${fullName.slice(0, 120)} (${role === "agent" ? "agent / caretaker" : "owner"}) applied to become a verified landlord.`,
+  );
 }
 
 export async function decideLandlord(
@@ -265,7 +280,8 @@ export async function decideLandlord(
     reject: ["Verification needs another look", "Open RentPact to see what to fix and resubmit."],
     revoke: ["Your verification was revoked", "Your listings have been taken down. Open RentPact for details."],
   } as const;
-  await notify(row.email, messages[decision][0], messages[decision][1], "/verify");
+  const reason = decision !== "approve" && note.trim() ? ` Reason: ${note.trim().slice(0, 500)}` : "";
+  await notify(row.email, messages[decision][0], `${messages[decision][1]}${reason}`, "/verify");
 }
 
 // ─── Properties ─────────────────────────────────────────────────────────────
@@ -333,6 +349,11 @@ export async function submitPropertyDocuments(
     );
     await deleteFiles(replaced);
   }
+  const { data: listing } = await db.from("listings").select("property_address").eq("id", listingId).maybeSingle();
+  await notifyReviewers(
+    "New property to verify",
+    `${listing?.property_address ?? "A property"} is waiting for its document check and video walk-through.`,
+  );
 }
 
 const sameAddress = (a: string, b: string) =>
@@ -441,7 +462,7 @@ export async function decideListing(
     decision === "approve" ? "Your property is verified and live" : "Your property needs another look",
     decision === "approve"
       ? `${listing.property_address} now shows to tenants as verified.`
-      : `Open RentPact to see what to fix for ${listing.property_address}.`,
+      : `${listing.property_address} needs changes before it can go live. Reason: ${note.trim().slice(0, 500)}`,
     `/listings/${listingId}`,
   );
 }
@@ -471,9 +492,7 @@ export async function reportListing(reporterEmail: string, listingId: string, re
     created_at: Date.now(),
   });
   if (error) throw error;
-  for (const reviewer of reviewerEmails()) {
-    await notify(reviewer, "A listing was reported", text.slice(0, 120), "/review");
-  }
+  await notifyReviewers("A listing was reported", text.slice(0, 300));
 }
 
 export async function resolveReport(

@@ -2,6 +2,7 @@ import "server-only";
 import type { ConditionAreaKey } from "@/lib/condition";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { sendPushToEmail } from "@/lib/pushServer";
+import { emailForMessage, sendEmail } from "@/lib/emailServer";
 
 /**
  * Conversation threads. Two kinds share one store:
@@ -255,8 +256,14 @@ export async function createMessage(input: Omit<Message, "id" | "createdAt" | "r
 
   // Best-effort push to the recipient — covers chat messages and every system
   // event that posts to the thread (rent released, dispute raised, repair
-  // credit, etc.). Never blocks or fails message creation.
-  sendPushToEmail(message.toEmail, buildPushPayload(message)).catch(() => {});
+  // credit, etc.) — plus an email for lease events (not chat). Awaited so the
+  // serverless function doesn't freeze before they go out; both swallow their
+  // own errors, so neither can fail message creation.
+  const email = emailForMessage(message);
+  await Promise.allSettled([
+    sendPushToEmail(message.toEmail, buildPushPayload(message)),
+    email ? sendEmail(message.toEmail, email.content, email.category) : Promise.resolve(),
+  ]);
 
   return message;
 }

@@ -39,6 +39,7 @@ config (chain IDs, RPC URLs, public contract addresses).
 | `NEXT_PUBLIC_PRIVY_APP_ID` | Optional | Privy dashboard → App settings (step 2b) — enables email-code sign-in |
 | `PRIVY_APP_SECRET` | With the App ID | Privy dashboard → App settings (step 2b) — **server-only, never commit** |
 | `REVIEWER_EMAILS` | To list properties | Comma-separated emails of the RentPact review team (step 2c) |
+| `RESEND_API_KEY` / `EMAIL_FROM` / `EMAIL_REPLY_TO` | Optional | Resend (step 2d) — **API key is server-only, never commit** |
 | `NEXT_PUBLIC_CIRCLE_APP_ID` | For real Circle mode | Circle console (step 3) |
 | `CIRCLE_API_KEY` | For real Circle mode | Circle console (step 3) — **server-only, never commit** |
 | `CIRCLE_ENTITY_SECRET` | For real Circle mode | Circle console (step 3) — **server-only, never commit** |
@@ -136,6 +137,24 @@ in a review queue until the RentPact team has checked it
 
 Listings published before verification existed stay visible with a "Not
 yet verified" label until their landlord sends documents for them.
+
+### 2d. Email (optional)
+
+`src/lib/emailServer.ts` emails people about lease events — the lease invite
+to a landlord (even one without an account yet), lease signed, rent
+released, disputes, issue reports — and about verification decisions; the
+review team is emailed when something new needs reviewing. Lease emails
+follow the same per-category switches as in-app notifications.
+
+1. Create a free account at **resend.com** → **Domains → Add domain** →
+   `rentpact.homes` (region: Ireland, nearest to the app).
+2. Add the DNS records Resend shows (MX + TXT for `send`, the DKIM TXT
+   record, and optionally a `_dmarc` TXT record) in **Vercel → Domains →
+   rentpact.homes → DNS Records**, then click **Verify** in Resend.
+3. **API Keys → Create** (sending access) → set `RESEND_API_KEY`, plus
+   `EMAIL_FROM` and `EMAIL_REPLY_TO`, in `.env.local` and on Vercel.
+
+Without the key, nothing is sent and nothing else changes.
 
 ## 3. Circle console setup (for real Wallets + Gas Station)
 
